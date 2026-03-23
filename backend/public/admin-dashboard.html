@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dispatch Admin Dashboard</title>
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+    .wrap { padding: 20px; max-width: 1200px; margin: 0 auto; }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card { background: #1e293b; border-radius: 10px; padding: 14px; }
+    .title { font-size: 12px; color: #94a3b8; }
+    .value { font-size: 24px; font-weight: 700; margin-top: 8px; }
+    .bars { display: flex; gap: 8px; margin-top: 10px; }
+    .bar { height: 10px; border-radius: 6px; background: #334155; flex: 1; overflow: hidden; }
+    .fill { height: 100%; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #334155; font-size: 13px; }
+    .controls { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    textarea { width: 100%; min-height: 100px; background: #0b1220; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 10px; }
+    button { background: #2563eb; color: white; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+    button.alt { background: #334155; }
+    .state-Active { color: #22c55e; }
+    .state-Cooldown { color: #f59e0b; }
+    .state-Circuit-Open { color: #ef4444; }
+    .state-Paused { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>Dispatch Admin Dashboard</h2>
+
+    <div class="grid">
+      <div class="card">
+        <div class="title">Queue Length</div>
+        <div id="queueLen" class="value">0</div>
+      </div>
+      <div class="card">
+        <div class="title">Realtime QPS</div>
+        <div id="qps" class="value">0</div>
+      </div>
+      <div class="card">
+        <div class="title">Sent / Success / Failed</div>
+        <div id="totals" class="value">0 / 0 / 0</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="title">Platform Success Rate</div>
+      <div class="bars">
+        <div style="flex:1;">
+          <div>iOS: <span id="iosRate">0%</span></div>
+          <div class="bar"><div id="iosFill" class="fill" style="width:0%; background:#22c55e;"></div></div>
+        </div>
+        <div style="flex:1;">
+          <div>Android: <span id="androidRate">0%</span></div>
+          <div class="bar"><div id="androidFill" class="fill" style="width:0%; background:#06b6d4;"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="title">SessionContext Import (paste 50.txt content)</div>
+      <textarea id="importText" placeholder="Paste session lines here..."></textarea>
+      <div class="controls">
+        <button onclick="importSessions()">Import Sessions</button>
+        <button class="alt" onclick="pauseAll()">Pause All</button>
+        <button class="alt" onclick="resumeAll()">Resume All</button>
+        <button class="alt" onclick="drainQueue()">Drain Queue</button>
+        <span id="importResult"></span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="title">Session Rotator State</div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Platform</th><th>Status</th><th>Cooldown(ms)</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="sessionTable"></tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="title">SubAccount Monitor</div>
+      <div class="controls">
+        <input id="subSlice" placeholder="5-10" />
+        <input id="subCount" type="number" min="1" value="5" />
+        <input id="subPerAccount" type="number" min="0" value="10" />
+        <button onclick="createSubAccounts()">create_sub_accounts</button>
+        <button class="alt" onclick="redistributeSubAccounts()">Redistribute</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>SubAccountID</th><th>Quota</th><th>Assigned</th><th>Online</th><th>Running</th><th>Adjust</th><th>API Key</th>
+          </tr>
+        </thead>
+        <tbody id="subTable"></tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="title">Dispatch Logs (by SubAccount)</div>
+      <div class="controls">
+        <input id="logSubId" placeholder="sub-1" />
+        <button onclick="loadLogs()">Filter Logs</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Time</th><th>SubAccount</th><th>Session</th><th>Platform</th><th>Status</th><th>Code</th></tr>
+        </thead>
+        <tbody id="logTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    async function api(url, options = {}) {
+      const res = await fetch(url, { headers: { "content-type": "application/json" }, ...options });
+      return await res.json();
+    }
+
+    async function loadStats() {
+      const out = await api("/api/system/stats");
+      const d = out.data || {};
+      document.getElementById("queueLen").textContent = String(d.queue?.queued || 0);
+      document.getElementById("qps").textContent = String(d.throughput?.qps || 0);
+      document.getElementById("totals").textContent = `${d.throughput?.totalSent || 0} / ${d.throughput?.totalSuccess || 0} / ${d.throughput?.totalFailed || 0}`;
+
+      const ios = Number(d.platformSuccessRate?.iOS || 0);
+      const android = Number(d.platformSuccessRate?.Android || 0);
+      document.getElementById("iosRate").textContent = `${ios}%`;
+      document.getElementById("androidRate").textContent = `${android}%`;
+      document.getElementById("iosFill").style.width = `${Math.max(0, Math.min(100, ios))}%`;
+      document.getElementById("androidFill").style.width = `${Math.max(0, Math.min(100, android))}%`;
+
+      const tbody = document.getElementById("sessionTable");
+      tbody.textContent = "";
+      const sessions = Array.isArray(d.sessions) ? d.sessions : [];
+      if (!sessions.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.textContent = "No sessions";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+      sessions.forEach((s) => {
+        const tr = document.createElement("tr");
+        const tdId = document.createElement("td");
+        tdId.textContent = String(s.id || "");
+        const tdPlatform = document.createElement("td");
+        tdPlatform.textContent = String(s.platform || "");
+        const tdState = document.createElement("td");
+        tdState.className = `state-${String(s.state || "")}`;
+        tdState.textContent = String(s.state || "");
+        const tdCooldown = document.createElement("td");
+        tdCooldown.textContent = String(s.cooldownRemainingMs || 0);
+        const tdAction = document.createElement("td");
+        const btnOpen = document.createElement("button");
+        btnOpen.textContent = "Circuit Open";
+        btnOpen.onclick = () => openCircuit(String(s.id || ""));
+        const btnClose = document.createElement("button");
+        btnClose.className = "alt";
+        btnClose.textContent = "Recover";
+        btnClose.onclick = () => closeCircuit(String(s.id || ""));
+        tdAction.appendChild(btnOpen);
+        tdAction.appendChild(document.createTextNode(" "));
+        tdAction.appendChild(btnClose);
+        [tdId, tdPlatform, tdState, tdCooldown, tdAction].forEach((x) => tr.appendChild(x));
+        tbody.appendChild(tr);
+      });
+
+      const subBody = document.getElementById("subTable");
+      subBody.textContent = "";
+      const subs = Array.isArray(d.subAccounts) ? d.subAccounts : [];
+      if (!subs.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 7;
+        td.textContent = "No sub-accounts";
+        tr.appendChild(td);
+        subBody.appendChild(tr);
+      } else {
+        subs.forEach((sub) => {
+          const tr = document.createElement("tr");
+          const tdId = document.createElement("td"); tdId.textContent = String(sub.subAccountId || "");
+          const tdQuota = document.createElement("td"); tdQuota.textContent = String(sub.assignmentQuota || 0);
+          const tdAssigned = document.createElement("td"); tdAssigned.textContent = String(sub.assignedTotal || 0);
+          const tdOnline = document.createElement("td"); tdOnline.textContent = String(sub.online || 0);
+          const tdRunning = document.createElement("td"); tdRunning.textContent = String(sub.running || 0);
+          const tdAdjust = document.createElement("td");
+          const input = document.createElement("input");
+          input.type = "number"; input.min = "0"; input.value = String(sub.assignmentQuota || 0); input.style.width = "80px";
+          const btn = document.createElement("button");
+          btn.className = "alt";
+          btn.textContent = "Apply";
+          btn.onclick = () => updateQuota(String(sub.subAccountId || ""), Number(input.value || 0));
+          tdAdjust.appendChild(input); tdAdjust.appendChild(document.createTextNode(" ")); tdAdjust.appendChild(btn);
+          const tdApi = document.createElement("td"); tdApi.textContent = String(sub.apiKey || "");
+          [tdId, tdQuota, tdAssigned, tdOnline, tdRunning, tdAdjust, tdApi].forEach((x) => tr.appendChild(x));
+          subBody.appendChild(tr);
+        });
+      }
+    }
+
+    async function importSessions() {
+      const text = document.getElementById("importText").value;
+      const out = await api("/api/sessions/import", {
+        method: "POST",
+        body: JSON.stringify({ rawText: text, cooldownMs: 30000 })
+      });
+      const d = out.data || {};
+      document.getElementById("importResult").textContent = `Imported: ${d.imported || 0}, Failed: ${d.failed || 0}`;
+      await loadStats();
+    }
+
+    async function openCircuit(id) {
+      await api(`/api/sessions/${encodeURIComponent(id)}/circuit/open`, { method: "POST", body: JSON.stringify({ reason: "admin_manual" }) });
+      await loadStats();
+    }
+
+    async function closeCircuit(id) {
+      await api(`/api/sessions/${encodeURIComponent(id)}/circuit/close`, { method: "POST", body: JSON.stringify({}) });
+      await loadStats();
+    }
+
+    async function pauseAll() {
+      await api("/api/system/control/pause-all", { method: "POST", body: JSON.stringify({}) });
+      await loadStats();
+    }
+
+    async function resumeAll() {
+      await api("/api/system/control/resume-all", { method: "POST", body: JSON.stringify({}) });
+      await loadStats();
+    }
+
+    async function drainQueue() {
+      await api("/api/system/control/drain-queue", { method: "POST", body: JSON.stringify({}) });
+      await loadStats();
+    }
+
+    async function createSubAccounts() {
+      const slice = String(document.getElementById("subSlice").value || "").trim();
+      let count = Number(document.getElementById("subCount").value || 5);
+      let perAccount = Number(document.getElementById("subPerAccount").value || 10);
+      const m = slice.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (m) {
+        count = Number(m[1]);
+        perAccount = Number(m[2]);
+      }
+      await api("/api/subaccounts/create", {
+        method: "POST",
+        body: JSON.stringify({ count, perAccount })
+      });
+      await loadStats();
+    }
+
+    async function updateQuota(subAccountId, assignmentQuota) {
+      await api(`/api/subaccounts/${encodeURIComponent(subAccountId)}/quota`, {
+        method: "POST",
+        body: JSON.stringify({ assignmentQuota })
+      });
+      await loadStats();
+    }
+
+    async function redistributeSubAccounts() {
+      await api("/api/subaccounts/distribute", { method: "POST", body: JSON.stringify({}) });
+      await loadStats();
+    }
+
+    async function loadLogs() {
+      const sub = String(document.getElementById("logSubId").value || "").trim();
+      const query = sub ? `?subAccountId=${encodeURIComponent(sub)}&limit=100` : "?limit=100";
+      const out = await api(`/api/system/logs${query}`);
+      const list = Array.isArray(out.data) ? out.data : [];
+      const tbody = document.getElementById("logTable");
+      tbody.textContent = "";
+      if (!list.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 6;
+        td.textContent = "No logs";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+      list.forEach((l) => {
+        const tr = document.createElement("tr");
+        const cols = [
+          new Date(Number(l.ts || 0)).toLocaleString(),
+          String(l.subAccountId || ""),
+          String(l.sessionId || ""),
+          String(l.platform || ""),
+          String(l.status || ""),
+          String(l.gatewayCode || "")
+        ];
+        cols.forEach((v) => { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
+        tbody.appendChild(tr);
+      });
+    }
+
+    loadStats();
+    loadLogs();
+    setInterval(loadStats, 5000);
+    setInterval(loadLogs, 8000);
+  </script>
+</body>
+</html>

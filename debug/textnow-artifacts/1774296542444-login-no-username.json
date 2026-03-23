@@ -1,0 +1,118 @@
+{
+  "label": "login-no-username",
+  "capturedAt": "2026-03-23T20:09:02.595Z",
+  "url": "https://www.textnow.com/login",
+  "title": "Attention Required! | Cloudflare",
+  "issue": "page-pattern:/blocked/i",
+  "frames": [
+    "https://www.textnow.com/login"
+  ],
+  "selectorResults": {
+    "username": [
+      {
+        "selector": "input[name=\"username\"]",
+        "count": 0
+      },
+      {
+        "selector": "input[name=\"email\"]",
+        "count": 0
+      },
+      {
+        "selector": "input[id*=\"email\" i]",
+        "count": 0
+      },
+      {
+        "selector": "input[id*=\"user\" i]",
+        "count": 0
+      },
+      {
+        "selector": "input[type=\"email\"]",
+        "count": 0
+      },
+      {
+        "selector": "input[autocomplete=\"username\"]",
+        "count": 0
+      },
+      {
+        "selector": "input[autocomplete=\"email\"]",
+        "count": 0
+      },
+      {
+        "selector": "input[placeholder*=\"username\" i]",
+        "count": 0
+      },
+      {
+        "selector": "input[placeholder*=\"email\" i]",
+        "count": 0
+      },
+      {
+        "selector": "input[data-testid*=\"email\" i]",
+        "count": 0
+      },
+      {
+        "selector": "input[data-testid*=\"user\" i]",
+        "count": 0
+      }
+    ],
+    "password": [
+      {
+        "selector": "input[type=\"password\"]",
+        "count": 0
+      },
+      {
+        "selector": "input[name=\"password\"]",
+        "count": 0
+      },
+      {
+        "selector": "input[id*=\"password\" i]",
+        "count": 0
+      },
+      {
+        "selector": "input[autocomplete=\"current-password\"]",
+        "count": 0
+      }
+    ],
+    "submit": [
+      {
+        "selector": "button[type=\"submit\"]",
+        "count": 0
+      },
+      {
+        "selector": "button[data-testid*=\"login\" i]",
+        "count": 0
+      },
+      {
+        "selector": "button[data-testid*=\"sign\" i]",
+        "count": 0
+      },
+      {
+        "selector": "button[aria-label*=\"login\" i]",
+        "count": 0
+      },
+      {
+        "selector": "button[aria-label*=\"sign in\" i]",
+        "count": 0
+      }
+    ],
+    "compose": [
+      {
+        "selector": "[data-testid=\"navbar-compose\"]",
+        "count": 0
+      },
+      {
+        "selector": "button[aria-label*=\"compose\" i]",
+        "count": 0
+      },
+      {
+        "selector": "button[aria-label*=\"new message\" i]",
+        "count": 0
+      }
+    ]
+  },
+  "inputs": [],
+  "extra": {
+    "username": "hulpllz9vgoitghq",
+    "requestedUrl": "https://www.textnow.com/login",
+    "pageIssue": "page-pattern:/blocked/i"
+  }
+}
