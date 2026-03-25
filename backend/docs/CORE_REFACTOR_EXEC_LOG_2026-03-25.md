@@ -131,3 +131,10 @@
 ### 6.3 同步后结论
 - 服务器部署与核心链路改造已生效，服务进程与健康检查正常。
 - 当前唯一未通过项是 `test:jwt-auth` 脚本参数模型滞后，需要按服务端登录协议修脚本。
+
+## 7. JWT 脚本修复后终验（2026-03-25）
+- 已修复 `backend/scripts/test_jwt_auth.cjs`，兼容当前登录/鉴权返回结构。
+- 在腾讯云使用有效 operator 账号执行：
+  - `TEST_USERNAME=subop_20260316_1 TEST_PASSWORD=*** npm run test:jwt-auth`
+- 结果：4/4 全通过（登录、`/me`、无效 token 拒绝、refresh）。
+- 判定：同步后测试闭环完成。
