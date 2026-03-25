@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { GatewayPacket } from "./contracts.js";
 import { GatewayErrorCode, isRetryableStatus } from "./error-codes.js";
 import { GatewayError } from "./errors.js";
+import { getOrCreateFingerprint } from "./device-fingerprint-store.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const GATEWAY_RETRY_BASE_MS = Math.max(50, Number(process.env.GATEWAY_RETRY_BASE_MS || 200));
@@ -35,33 +36,52 @@ const computeRetryDelayMs = (attempt: number): number => {
   return withJitter(bounded, 0.2);
 };
 
-const pickInRange = (minValue: unknown, maxValue: unknown, fallbackMin: number, fallbackMax: number): number => {
-  const min = Math.max(1, Number(minValue || fallbackMin));
-  const max = Math.max(min, Number(maxValue || fallbackMax));
-  return min + Math.floor(Math.random() * (max - min + 1));
+const buildStableHeaders = (
+  baseHeaders: Record<string, string>,
+  sessionId: string,
+  platform: "iOS" | "Android"
+): Record<string, string> => {
+  const fp = getOrCreateFingerprint(sessionId, platform);
+  return {
+    ...baseHeaders,
+    // Internal only. Do not forward to upstream.
+    __h2_weight: String(fp.h2Settings.weight),
+    __h2_window: String(fp.h2Settings.windowSize),
+  };
 };
 
-const buildShapedHeaders = (baseHeaders: Record<string, string>, attempt: number): Record<string, string> => {
-  const headers = { ...baseHeaders };
-  const weight = pickInRange(headers["x-h2-weight-min"], headers["x-h2-weight-max"], 32, 223);
-  const window = pickInRange(headers["x-h2-window-min"], headers["x-h2-window-max"], 65535, 131070);
-  const interleaveDepth = pickInRange(headers["x-h2-interleave-min"], headers["x-h2-interleave-max"], 2, 8);
-  // Stream-shaping metadata for upstream egress layer/proxy; harmless if upstream ignores it.
-  if (!headers["x-h2-priority-weight"]) {
-    headers["x-h2-priority-weight"] = String(weight);
-  }
-  if (!headers["x-h2-window-size"]) {
-    headers["x-h2-window-size"] = String(window);
-  }
-  headers["x-h2-interleave-depth"] = String(interleaveDepth);
-  headers["x-stream-attempt"] = String(attempt + 1);
-  return headers;
+const shouldStripOutboundHeader = (name: string): boolean => {
+  const k = String(name || "").trim().toLowerCase();
+  if (!k) return true;
+  if (k.startsWith("x-gw-")) return true;
+  if (k.startsWith("x-h2-")) return true;
+  if (k.startsWith("x-ja3-")) return true;
+  if (k.startsWith("x-ja4-")) return true;
+  if (k === "x-device-fingerprint-policy") return true;
+  if (k === "x-session-px") return true;
+  if (k === "x-hardware-fingerprint") return true;
+  if (k === "x-stream-attempt") return true;
+  if (k === "x-dispatch-attempt") return true;
+  if (k === "x-tls-client-profile") return true;
+  if (k === "x-egress-profile-applied") return true;
+  if (k === "x-idempotency-key") return true;
+  if (k === "x-request-id") return true;
+  return false;
+};
+
+const sanitizeOutboundHeaders = (headers: Record<string, string>): Record<string, string> => {
+  const out: Record<string, string> = {};
+  Object.entries(headers).forEach(([k, v]) => {
+    if (!shouldStripOutboundHeader(k)) {
+      out[k] = v;
+    }
+  });
+  return out;
 };
 
 type EgressProfileApplier = (args: { profile: string; url: string; headers: Record<string, string> }) => Promise<void> | void;
-let egressProfileApplier: EgressProfileApplier | null = null;
-export const setEgressProfileApplier = (fn: EgressProfileApplier | null) => {
-  egressProfileApplier = fn;
+export const setEgressProfileApplier = (_fn: EgressProfileApplier | null) => {
+  // kept for backward compatibility; transport no longer consumes egress profile headers
 };
 
 export const sendViaTransportDriver = async (input: {
@@ -79,24 +99,18 @@ export const sendViaTransportDriver = async (input: {
     const attemptTimeoutMs = computeAttemptTimeoutMs(input.timeoutMs, attempt);
     const timer = setTimeout(() => controller.abort(), attemptTimeoutMs);
     try {
-      const shapedHeaders = buildShapedHeaders(input.packet.headers, attempt);
-      const tlsProfile = shapedHeaders["x-tls-client-profile"];
-      if (tlsProfile && !egressProfileApplier) {
-        shapedHeaders["x-egress-profile-applied"] = "pass-through";
-      }
-      if (tlsProfile && egressProfileApplier) {
-        await egressProfileApplier({ profile: tlsProfile, url: input.packet.url, headers: shapedHeaders });
-        shapedHeaders["x-egress-profile-applied"] = "custom";
-      }
+      const stableHeaders = buildStableHeaders(
+        input.packet.headers,
+        input.packet.metadata.sessionId,
+        input.packet.metadata.platform
+      );
+      const { __h2_weight, __h2_window, ...wireHeaders } = stableHeaders;
+      const cleanWireHeaders = sanitizeOutboundHeaders(wireHeaders);
       const res = await fetch(
         input.packet.url,
         {
           method: input.packet.method,
-          headers: {
-            ...shapedHeaders,
-            "x-trace-id": traceId,
-            "x-dispatch-attempt": String(attempt + 1),
-          },
+          headers: cleanWireHeaders,
           body: input.packet.body as any,
           signal: controller.signal,
         } as any // cast to avoid TS complaining about non‑standard fields

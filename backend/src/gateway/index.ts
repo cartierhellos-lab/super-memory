@@ -14,3 +14,4 @@ export * from "./flow-controller.js";
 export * from "./dispatch-engine.js";
 export * from "./runtime.js";
 export * from "./tenant-resource-manager.js";
+export * from "./device-fingerprint-store.js";

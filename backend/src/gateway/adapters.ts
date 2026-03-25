@@ -39,10 +39,6 @@ const iosAdapter = (req: NormalizedGatewayRequest): AdapterOutput => {
     platform: "iOS",
     extraHeaders: req.extraHeaders,
   });
-  headers["x-gw-platform-profile"] = "ios";
-  headers["x-gw-adapter-version"] = req.hints.adapterVersion;
-  headers["x-idempotency-key"] = req.idempotencyKey;
-  headers["x-request-id"] = req.requestId;
 
   const body = buildCommonBody(req);
   return { headers, body };
@@ -54,10 +50,6 @@ const androidAdapter = (req: NormalizedGatewayRequest): AdapterOutput => {
     platform: "Android",
     extraHeaders: req.extraHeaders,
   });
-  headers["x-gw-platform-profile"] = "android";
-  headers["x-gw-adapter-version"] = req.hints.adapterVersion;
-  headers["x-idempotency-key"] = req.idempotencyKey;
-  headers["x-request-id"] = req.requestId;
 
   const body = buildCommonBody(req);
   return { headers, body };
@@ -72,6 +64,7 @@ export const buildGatewayPacket = (req: NormalizedGatewayRequest): GatewayPacket
     body: JSON.stringify(out.body),
     metadata: {
       platform: req.platform,
+      sessionId: String(req.session.sessionId || req.session.clientId || ""),
       messageType: req.message.type,
       protocolVersion: req.hints.protocolVersion,
       adapterVersion: req.hints.adapterVersion,

@@ -60,6 +60,7 @@ export interface GatewayPacket {
   body: string | Buffer | NodeJS.ReadableStream;
   metadata: {
     platform: GatewayPlatform;
+    sessionId: string;
     messageType: GatewayMessageType;
     protocolVersion: string;
     adapterVersion: string;

@@ -1,4 +1,3 @@
-import { URL } from "url";
 import { buildGatewayPacket } from "./adapters.js";
 import { DeviceProfile, GatewayPacket, GatewaySendRequest } from "./contracts.js";
 import { GatewayError } from "./errors.js";
@@ -19,16 +18,6 @@ interface DispatchOutput {
   notes: string[];
 }
 
-const buildHttp2PseudoHeaders = (packet: GatewayPacket): Record<string, string> => {
-  const url = new URL(packet.url);
-  return {
-    ":method": packet.method,
-    ":scheme": url.protocol.replace(":", ""),
-    ":authority": url.host,
-    ":path": `${url.pathname}${url.search}`,
-  };
-};
-
 export const buildDispatchRequest = async (input: DispatchBuildInput): Promise<DispatchOutput> => {
   const normalized = normalizeGatewayRequest(input.request);
   if (normalized.platform !== input.profile.platform) {
@@ -44,15 +33,7 @@ export const buildDispatchRequest = async (input: DispatchBuildInput): Promise<D
     platform: input.profile.platform,
     profile: input.profile,
   });
-  packet.headers["x-device-fingerprint-policy"] = fingerprintPolicy.policyId;
-  packet.headers["x-tls-client-profile"] = fingerprintPolicy.tlsClientProfile;
-  packet.headers["x-ja3-policy-id"] = fingerprintPolicy.ja3PolicyId;
-  packet.headers["x-ja4-policy-id"] = fingerprintPolicy.ja4PolicyId;
-  packet.headers["x-h2-weight-min"] = String(fingerprintPolicy.h2WeightRange[0]);
-  packet.headers["x-h2-weight-max"] = String(fingerprintPolicy.h2WeightRange[1]);
-  packet.headers["x-h2-window-min"] = String(fingerprintPolicy.h2WindowRange[0]);
-  packet.headers["x-h2-window-max"] = String(fingerprintPolicy.h2WindowRange[1]);
-  notes.push(`fingerprint policy mapped: ${fingerprintPolicy.policyId}`);
+  notes.push(`fingerprint policy: ${fingerprintPolicy.policyId}`);
 
   if (normalized.message.type !== "sms" && input.localAbsolutePath) {
     const media = await buildMultipartMediaPayload({
@@ -87,20 +68,8 @@ export const buildDispatchRequest = async (input: DispatchBuildInput): Promise<D
         status: 401,
       });
     }
-    packet.headers["x-session-px"] = sessionPx;
-    packet.headers["x-hardware-fingerprint"] = String(input.profile.hardwareFingerprint || "").trim();
-
-    const h2 = buildHttp2PseudoHeaders(packet);
-    h2["x-session-px"] = sessionPx;
-    if (packet.headers["x-hardware-fingerprint"]) {
-      h2["x-hardware-fingerprint"] = packet.headers["x-hardware-fingerprint"];
-    }
-    packet.headers["x-h2-pseudo-method"] = h2[":method"];
-    packet.headers["x-h2-pseudo-scheme"] = h2[":scheme"];
-    packet.headers["x-h2-pseudo-authority"] = h2[":authority"];
-    packet.headers["x-h2-pseudo-path"] = h2[":path"];
-    notes.push("iOS HTTP/2 headers populated with upstream-provided Session-PX");
-    return { packet, http2Headers: h2, notes };
+    notes.push("iOS Session-PX present (validated), no proxy fingerprint headers injected");
+    return { packet, notes };
   }
 
   if (input.profile.platform === "Android") {

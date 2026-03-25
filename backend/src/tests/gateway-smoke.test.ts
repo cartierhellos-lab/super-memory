@@ -30,7 +30,8 @@ function assert(condition: unknown, message: string) {
 
   const iosPacket = buildGatewayPacket(ios);
   const iosBody = JSON.parse(iosPacket.body.toString());
-  assert(iosPacket.headers["x-gw-platform-profile"] === "ios", "ios adapter header failed");
+  assert(!("x-gw-platform-profile" in iosPacket.headers), "ios leak header should be removed");
+  assert(!!iosPacket.metadata.sessionId, "ios metadata.sessionId missing");
   assert(iosBody.message?.channel === "sms", "ios sms payload failed");
 
   const android = normalizeGatewayRequest({
@@ -56,10 +57,10 @@ function assert(condition: unknown, message: string) {
 
   const androidPacket = buildGatewayPacket(android);
   const androidBody = JSON.parse(androidPacket.body.toString());
-  assert(androidPacket.headers["x-gw-platform-profile"] === "android", "android adapter header failed");
+  assert(!("x-gw-platform-profile" in androidPacket.headers), "android leak header should be removed");
+  assert(!!androidPacket.metadata.sessionId, "android metadata.sessionId missing");
   assert(androidBody.message?.channel === "mms", "android mms payload failed");
   assert(androidBody.message?.attachments?.length === 1, "android image attachment failed");
 
   console.log("gateway-smoke test passed");
 })();
-

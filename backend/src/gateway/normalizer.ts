@@ -60,20 +60,30 @@ const normalizeMessage = (message: GatewaySendRequest["message"]) => {
 
 const normalizeSession = (session: unknown): GatewaySessionEnvelope => {
   const parsed = parseSessionPacket(session);
+  const sessionId = String((parsed as any)?.sessionId || (parsed as any)?.clientId || "").trim();
+  if (!sessionId) {
+    throw new GatewayError({
+      message: "session.sessionId (or clientId) is required",
+      code: GatewayErrorCode.INVALID_SESSION,
+      status: 401,
+    });
+  }
+  parsed.sessionId = sessionId;
   return parsed as GatewaySessionEnvelope;
 };
 
 const computeDefaultIdempotencyKey = (req: GatewaySendRequest): string => {
+  const bucket = Math.floor(Date.now() / 10000);
+  const sessionId = String(
+    (req as any)?.session?.sessionId || (req as any)?.session?.clientId || ""
+  ).trim();
   const digestRaw = [
     req.tenantId,
     req.platform,
+    sessionId,
     sanitizePhone(req.message.to),
-    req.message.type,
     req.message.text || "",
-    req.message.mediaUrl || "",
-    req.message.imageBase64 ? "b64" : "",
-    req.message.imageBinaryHex ? "bin" : "",
-    req.hints.protocolVersion || "v1",
+    bucket,
   ].join("|");
   return crypto.createHash("sha256").update(digestRaw).digest("hex");
 };

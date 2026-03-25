@@ -24,29 +24,29 @@ function assert(condition: unknown, message: string) {
     request: {
       tenantId: "tenant-a",
       platform: "iOS",
-      session: { Cookie: "_pxhd=abc", "X-PX-AUTHORIZATION": "3:abc" },
+      session: { Cookie: "_pxhd=abc", "X-PX-AUTHORIZATION": "3:abc", sessionId: "ios-session-1" },
       message: { to: "+15550100001", type: "image", text: "hello ios image", mediaUrl: "https://example.com/a.png" },
       hints: { endpoint: "https://example.com/upstream/send", method: "POST" },
     },
     profile: { platform: "iOS", sessionPx: "px-token", hardwareFingerprint: "hwfp-1" },
     localAbsolutePath: tmpFile,
   });
-  assert(!!iosDispatch.http2Headers?.[":method"], "ios http2 pseudo header failed");
-  assert(iosDispatch.packet.headers["x-session-px"] === "px-token", "ios session-px inject failed");
+  assert(!iosDispatch.http2Headers, "ios dispatch should not expose pseudo headers");
+  assert(!("x-session-px" in iosDispatch.packet.headers), "ios session-px header should not be injected");
 
   const androidDispatch = await buildDispatchRequest({
     request: {
       tenantId: "tenant-a",
       platform: "Android",
-      session: { token: "abc", "X-PX-AUTHORIZATION": "3:def" },
+      session: { token: "abc", "X-PX-AUTHORIZATION": "3:def", sessionId: "android-session-1" },
       message: { to: "+15550100002", type: "sms", text: "hello android sms" },
       hints: { endpoint: "https://example.com/upstream/send", method: "POST" },
     },
     profile: { platform: "Android" },
   });
-  assert(androidDispatch.packet.headers["x-tls-client-profile"] === "okhttp-real-device", "android tls profile failed");
+  assert(!("x-tls-client-profile" in androidDispatch.packet.headers), "android tls profile header should not be injected");
+  assert(androidDispatch.notes.some((v) => v.includes("fingerprint policy:")), "fingerprint note missing");
 
-  fs.unlinkSync(tmpFile);
   console.log("media-dispatch-smoke test passed");
 })().catch((err) => {
   console.error(err);
