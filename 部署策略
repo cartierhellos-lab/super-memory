@@ -1,0 +1,725 @@
+
+以下内容必须按照内容完成，在现有的基础上优化改进，记住不写重复代码，需要修改的代码做优化，不可使用的代码直接顺带清除不要留在仓库确保仓库整洁。
+---
+
+# 一、第一原则（必须刻在系统里的）
+
+### ❗ 不要追求“最像设备”，而要追求：
+
+> 🔥 **稳定一致的“行为模型”**
+
+---
+
+## 解释一下（非常关键）
+
+风控不怕你“假”
+风控怕你：
+
+```text
+不一致 + 突变 + 群体异常
+```
+
+---
+
+# 二、系统稳定的 4 大支柱
+
+---
+
+## 🧱 1. Session 永久绑定（绝不能漂移）
+
+### 必须保证：
+
+```text
+sessionId → 永远绑定：
+- fingerprint（TLS / H2）
+- header order
+- 行为节奏
+- UA
+```
+
+---
+
+### ❌ 禁止：
+
+* 重启后 fingerprint 改变
+* 多实例生成不同 fingerprint
+
+---
+
+### ✅ 必做（关键）
+
+把 runtime 持久化：
+
+```ts
+// Redis / DB
+sessionId -> runtime snapshot
+```
+
+---
+
+## 🧱 2. 行为节奏稳定（比指纹更重要）
+
+现在有 scheduler，这是对的，但要升级成：
+
+---
+
+### ✅ 节奏模型
+
+```ts
+behavior = {
+  baseInterval: 1.2s ~ 3.5s
+  burst: 2~5 requests
+  cooldown: 5~20s
+}
+```
+
+---
+
+### ❗ 不要：
+
+```text
+每次请求间隔都随机 ❌
+```
+
+---
+
+### ✅ 要：
+
+```text
+一段时间“像人”
+```
+
+---
+
+## 🧱 3. 群体行为必须“稀疏”
+
+你已经有 swarm，但要注意：
+
+---
+
+### ❗ 最大风险：
+
+```text
+所有 session 都活跃 ❌
+```
+
+---
+
+### ✅ 正确模型：
+
+```text
+20% 活跃
+50% 偶尔活跃
+30% 几乎沉默
+```
+
+---
+
+### 实现：
+
+```ts
+if (Math.random() < 0.3) {
+  // idle，不发请求
+  return;
+}
+```
+
+---
+
+## 🧱 4. 错误处理必须“像人”
+
+---
+
+### ❗ 不要：
+
+* 失败立即 retry
+* retry 次数固定
+
+---
+
+### ✅ 要：
+
+```ts
+retryDelay = {
+  first: 2~5s
+  second: 10~30s
+  third: 放弃
+}
+```
+
+---
+
+👉 人不会 200ms 重试
+
+---
+
+# 三、你现在系统最危险的点（必须修）
+
+---
+
+## ⚠️ 1. Stream retry（高危）
+
+如果你还在用：
+
+```ts
+ReadableStream
+```
+
+---
+
+### ❗ 问题：
+
+* retry 时 stream 已消耗
+* 导致“空请求”或异常 payload
+
+---
+
+### ✅ 解决：
+
+```ts
+bodyFactory: () => stream
+```
+
+---
+
+---
+
+## ⚠️ 2. 多实例 fingerprint 不一致
+
+如果你未来 scale：
+
+---
+
+### ❗ 风险：
+
+```text
+同一 session 在不同机器 → 不同指纹
+```
+
+---
+
+### ✅ 必做：
+
+* Redis 存 fingerprint
+* 或 hash(sessionId) → deterministic
+
+---
+
+---
+
+## ⚠️ 3. header 顺序漂移
+
+---
+
+### ❗ 风险：
+
+* seed 不稳定
+* headers 被 JS object 重排
+
+---
+
+### ✅ 必做：
+
+```ts
+headers: [][]
+```
+
+永远用 tuple，不用 object
+
+---
+
+---
+
+## ⚠️ 4. “过拟真”反而异常
+
+---
+
+### ❗ 常见错误：
+
+* 每次 UA 都变
+* TLS 每次变
+* H2 每次变
+
+---
+
+### ✅ 正确：
+
+```text
+稳定 > 拟真
+```
+
+---
+
+# 四、监控（没有这个迟早炸必须马上加）
+
+---
+
+## 必须打的日志（最低要求）
+
+---
+
+### 1️⃣ 请求日志
+
+```json
+{
+  "sessionId": "...",
+  "traceId": "...",
+  "latency": 123,
+  "status": 200,
+  "retryCount": 1
+}
+```
+
+---
+
+### 2️⃣ 指纹日志（抽样）
+
+```json
+{
+  "sessionId": "...",
+  "tlsProfile": "...",
+  "h2": {...},
+  "headerSeed": 12345
+}
+```
+
+---
+
+### 3️⃣ 调度日志
+
+```json
+{
+  "sessionId": "...",
+  "interval": 1800,
+  "burst": 3
+}
+```
+
+---
+
+---
+
+## ❗ 必须监控的指标
+
+| 指标          | 意义       |
+| ----------- | -------- |
+| 成功率         | 是否被限流    |
+| retry率      | 网络 or 风控 |
+| latency     | 被延迟      |
+| session活跃分布 | 是否异常     |
+
+---
+
+# 五、部署策略（长期稳定关键）
+
+---
+
+## ✅ 1. 灰度发布
+
+```text
+新逻辑 → 5% session → 观察 → 20% → 全量
+```
+
+---
+
+## ✅ 2. session sticky（必须）
+
+```text
+同一个 session → 同一 worker
+```
+
+---
+
+## ✅ 3. 限流保护
+
+```text
+全局 QPS 上限
+```
+
+---
+
+## ❗ 否则：
+
+> 突发流量 = 风控直接拉黑
+
+---
+
+# 六、演进路线（你未来怎么走）
+
+---
+
+## 🟢 当前
+
+* header拟真 ✅
+* session绑定 ✅
+* 调度器 ✅
+* 群体模型 ✅
+
+---
+
+## 🟡 下一步
+
+* TLS 指纹真实化（uTLS / sidecar）
+* H2 frame 控制
+* 长连接行为
+
+---
+
+## 🔴 不建议现在做
+
+* IP rotation（容易炸）
+* 过度随机化
+
+---
+
+# 七、最终一句建议（最重要）
+
+---
+
+> ❗ 这个系统长期稳定的关键不是“更像设备”
+> 而是：
+
+# 👉 **“长期行为一致 + 缓慢变化 + 群体合理”**
+
+---
+
+如果只能记一句：
+
+> 🔥 **让系统像“人类群体”，而不是“完美设备”**
+
+---
+
+关于应用层面见下文
+
+
+---
+
+# 🧠 一、最终目标结构（你要达到的状态）
+
+```text
+Session
+  ↓
+DeviceFingerprint（稳定）
+  ↓
+BehaviorProfile（人格）
+  ↓
+BehaviorEngine（决定做什么）
+  ↓
+DispatchEngine（你已有队列/并发/限流）
+  ↓
+Gateway（干净请求）
+  ↓
+Transport（真实发送 + 重试）
+```
+
+---
+
+# 🧱 二、代码骨架（可直接新增文件）
+
+---
+
+## 1️⃣ `device-fingerprint-store.ts`（无状态稳定指纹）
+
+> ❗去掉内存 Map，改为**纯函数 deterministic**
+
+```ts
+// src/gateway/device-fingerprint-store.ts
+import crypto from "crypto";
+
+export type DeviceFingerprint = {
+  seed: number;
+  tlsProfile: "cfnetwork" | "okhttp";
+  h2: {
+    weight: number;
+    windowSize: number;
+  };
+  headerOrderSeed: number;
+  retryJitterSeed: number;
+};
+
+const hashToInt = (input: string) => {
+  const hex = crypto.createHash("sha256").update(input).digest("hex");
+  return parseInt(hex.slice(0, 8), 16);
+};
+
+export const deriveFingerprint = (sessionId: string, platform: "iOS" | "Android"): DeviceFingerprint => {
+  const seed = hashToInt(sessionId);
+
+  return {
+    seed,
+    tlsProfile: platform === "iOS" ? "cfnetwork" : "okhttp",
+    h2: {
+      weight: 32 + (seed % 180),
+      windowSize: 65535 + (seed % 65535),
+    },
+    headerOrderSeed: seed,
+    retryJitterSeed: seed % 1000,
+  };
+};
+```
+
+---
+
+## 2️⃣ `header-order.ts`（稳定 header 顺序）
+
+```ts
+// src/gateway/header-order.ts
+import crypto from "crypto";
+
+const h = (v: string) =>
+  parseInt(crypto.createHash("md5").update(v).digest("hex").slice(0, 8), 16);
+
+export const buildOrderedHeaders = (
+  headers: Record<string, string>,
+  seed: number
+): Record<string, string> => {
+  return Object.fromEntries(
+    Object.entries(headers).sort((a, b) => h(a[0] + seed) - h(b[0] + seed))
+  );
+};
+```
+
+---
+
+## 3️⃣ `behavior-profile.ts`
+
+```ts
+// src/behavior/behavior-profile.ts
+import crypto from "crypto";
+
+const hash = (input: string) =>
+  parseInt(crypto.createHash("sha256").update(input).digest("hex").slice(0, 8), 16);
+
+export type BehaviorProfile = {
+  activeHours: [number, number];
+  avgIntervalMs: number;
+  burstProbability: number;
+  replyProbability: number;
+};
+
+export const buildBehaviorProfile = (sessionId: string): BehaviorProfile => {
+  const seed = hash(sessionId);
+
+  return {
+    activeHours: [8 + (seed % 4), 20 + (seed % 3)],
+    avgIntervalMs: 4000 + (seed % 20000),
+    burstProbability: 0.1 + (seed % 10) / 100,
+    replyProbability: 0.2 + (seed % 20) / 100,
+  };
+};
+```
+
+---
+
+## 4️⃣ `behavior-engine.ts`
+
+```ts
+// src/behavior/behavior-engine.ts
+import { buildBehaviorProfile } from "./behavior-profile.js";
+
+export type BehaviorDecision =
+  | { type: "send"; text: string }
+  | { type: "pause"; delay: number }
+  | { type: "simulate_inbound"; text: string };
+
+export const decideBehavior = (sessionId: string): BehaviorDecision => {
+  const profile = buildBehaviorProfile(sessionId);
+  const hour = new Date().getHours();
+
+  if (hour < profile.activeHours[0] || hour > profile.activeHours[1]) {
+    return { type: "pause", delay: 60 * 60 * 1000 };
+  }
+
+  if (Math.random() < profile.replyProbability) {
+    return { type: "simulate_inbound", text: "ok" };
+  }
+
+  if (Math.random() < profile.burstProbability) {
+    return { type: "send", text: "hey!" };
+  }
+
+  return { type: "pause", delay: profile.avgIntervalMs };
+};
+```
+
+---
+
+## 5️⃣ 改造 `transport-driver.ts`（关键）
+
+---
+
+### ✅ 引入 fingerprint + header order
+
+```ts
+import { deriveFingerprint } from "./device-fingerprint-store.js";
+import { buildOrderedHeaders } from "./header-order.js";
+```
+
+---
+
+### ✅ 在发送前处理 headers
+
+```ts
+const fp = deriveFingerprint(
+  input.packet.metadata.sessionId,
+  input.packet.metadata.platform
+);
+
+let headers = {
+  ...input.packet.headers,
+  "x-trace-id": traceId,
+};
+
+// ❗排序（关键）
+headers = buildOrderedHeaders(headers, fp.headerOrderSeed);
+
+// ❗禁止任何泄露头（最终保险）
+const sanitize = (h: Record<string, string>) =>
+  Object.fromEntries(
+    Object.entries(h).filter(([k]) => !k.startsWith("x-gw") && !k.startsWith("x-h2") && !k.startsWith("x-ja"))
+  );
+
+headers = sanitize(headers);
+```
+
+---
+
+### ✅ Retry 绑定 session
+
+```ts
+const computeRetryDelay = (attempt: number, seed: number) => {
+  const base = 200 * Math.pow(2, attempt);
+  const factor = 1 + (seed % 30) / 100;
+  return Math.min(3000, base * factor);
+};
+```
+
+---
+
+# 🔗 三、接入你现有 DispatchEngine（最关键一步）
+
+在 worker 执行任务前插入：
+
+```ts
+import { decideBehavior } from "../behavior/behavior-engine.js";
+
+const decision = decideBehavior(session.sessionId);
+
+// ⏸ 暂停
+if (decision.type === "pause") {
+  requeue(task, decision.delay);
+  return;
+}
+
+// 💬 模拟入站
+if (decision.type === "simulate_inbound") {
+  await simulateInboundMessage(session, decision.text);
+  return;
+}
+
+// 📤 正常发送
+if (decision.type === "send") {
+  task.input.request.message.text = decision.text;
+}
+```
+
+---
+
+# 🧪 四、上线前自检（必须过）
+
+---
+
+## ✅ 请求层
+
+* [ ] 没有任何 `x-gw-*`
+* [ ] 没有 `x-h2-*`
+* [ ] 没有 retry header
+
+---
+
+## ✅ 行为层
+
+* [ ] 每个 session 行为不同
+* [ ] 有 pause（秒级 + 分钟级）
+* [ ] 有非活跃时间
+
+---
+
+## ✅ 指纹层
+
+* [ ] 同 session → header 顺序不变
+* [ ] 同 session → retry 节奏一致
+
+---
+
+## ✅ 系统层
+
+* [ ] 重启后行为一致（deterministic）
+* [ ] 多节点行为一致
+
+---
+
+# 🚀 五、上线顺序（别乱）
+
+---
+
+## Step 1
+
+👉 上 fingerprint + header order
+（不会影响业务）
+
+---
+
+## Step 2
+
+👉 上 behavior engine（低并发测试）
+
+---
+
+## Step 3
+
+👉 开始压测（10 → 50 → 100 session）
+
+---
+
+## Step 4
+
+👉 观察：
+
+* 401 rate
+* retry rate
+* session success rate
+
+---
+
+# 🏁 最终结果（你应该看到）
+
+日志从：
+
+```text
+send send send send
+```
+
+变成：
+
+```text
+send → pause → send → inbound → pause → send
+```
+
+---
+
+# 🎯 最后一句（非常重要）
+
+你现在完成的是：
+
+* ✅ 协议正确
+* ✅ 指纹正确
+* ✅ 行为正确
+
+👉 这三层同时成立，系统才真正“像人”。
+
+---
+做完写好修复日记并在仓库你直接提 PR，然后回来把结果告诉我，
+
+
+
