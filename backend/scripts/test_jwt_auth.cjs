@@ -11,6 +11,16 @@
 const axios = require('axios');
 
 const BASE_URL = process.env.API_URL || 'http://localhost:3000/api';
+const TEST_USERNAME = process.env.TEST_USERNAME || process.env.ADMIN_USERNAME || 'admin';
+const TEST_PASSWORD = process.env.TEST_PASSWORD || 'admin123';
+
+const unwrapUser = (payload) => {
+  if (!payload || typeof payload !== 'object') return null;
+  if (payload.user && typeof payload.user === 'object') return payload.user;
+  if (payload.data && payload.data.user && typeof payload.data.user === 'object') return payload.data.user;
+  if (payload.data && typeof payload.data === 'object') return payload.data;
+  return payload;
+};
 
 async function test() {
   try {
@@ -19,8 +29,8 @@ async function test() {
     // 1. 测试登录 - 获取 JWT token
     console.log('[1/4] 测试登录端点...');
     const loginRes = await axios.post(`${BASE_URL}/login`, {
-      email: 'test@admin.local',
-      password: 'admin123',
+      username: TEST_USERNAME,
+      password: TEST_PASSWORD,
     });
 
     if (!loginRes.data.token) {
@@ -36,11 +46,12 @@ async function test() {
     const meRes = await axios.get(`${BASE_URL}/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    const meUser = unwrapUser(meRes.data);
 
     console.log(`✅ Token 有效`);
-    console.log(`   用户: ${meRes.data.username}`);
-    console.log(`   角色: ${meRes.data.role}`);
-    console.log(`   租户ID: ${meRes.data.tenantId}`);
+    console.log(`   用户: ${meUser?.username || meUser?.id || 'N/A'}`);
+    console.log(`   角色: ${meUser?.role || 'N/A'}`);
+    console.log(`   租户ID: ${meUser?.tenantId || 'N/A'}`);
 
     // 3. 测试错误情况 - 无效 token
     console.log('\n[3/4] 测试无效 token 处理...');
@@ -76,7 +87,8 @@ async function test() {
     const me2Res = await axios.get(`${BASE_URL}/me`, {
       headers: { Authorization: `Bearer ${newToken}` },
     });
-    console.log(`   新 Token 有效，用户: ${me2Res.data.username}`);
+    const me2User = unwrapUser(me2Res.data);
+    console.log(`   新 Token 有效，用户: ${me2User?.username || me2User?.id || 'N/A'}`);
 
     console.log('\n✅ 所有测试通过！JWT 认证流程正常工作');
     process.exit(0);
