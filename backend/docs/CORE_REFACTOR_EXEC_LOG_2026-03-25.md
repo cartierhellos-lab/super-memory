@@ -111,3 +111,23 @@
 - 请求层泄露头已从“构造 + 发送”两端被清理。
 - session 稳定绑定和 idempotency 行为已进入主链路。
 - 未完成项已收敛为环境问题（服务端口/数据库不可达），非本次改造代码缺陷。
+
+## 6. 腾讯云服务器同步后复测（2026-03-25）
+
+### 6.1 代码级测试
+- `npm run test:gateway-smoke` ✅
+- `npm run test:media-dispatch-smoke` ✅
+- `npm run test:stateless` ✅
+- `npm run test:regression-gateway` ✅
+- `npm run typecheck` ✅
+
+### 6.2 联调脚本
+- `node scripts/send-flow-check.mjs --failures` ✅（结果：暂无失败任务）
+- `node scripts/run_reset_and_tenant.cjs` ✅（LOCKED/Processing 与 Busy 已恢复，租户已对齐）
+- `npm run test:jwt-auth` ❌
+  - 失败信息：`{ error: 'Missing username or password' }`
+  - 判定：脚本请求体字段与当前服务端登录入参不一致（脚本传 `email`，接口要求 `username`）。
+
+### 6.3 同步后结论
+- 服务器部署与核心链路改造已生效，服务进程与健康检查正常。
+- 当前唯一未通过项是 `test:jwt-auth` 脚本参数模型滞后，需要按服务端登录协议修脚本。
