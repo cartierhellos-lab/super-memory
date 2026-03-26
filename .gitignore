@@ -6,3 +6,7 @@ downloads/
 .env
 .env.development
 .env.production
+deploy-backups/
+debug/textnow-artifacts/
+backend/docs/SUIXING_RIJI_*.md
+*.zip
