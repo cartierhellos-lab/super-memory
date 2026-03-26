@@ -55,8 +55,8 @@ const hashToInt = (input: string): number => {
   return parseInt(hex.slice(0, 8), 16);
 };
 
-const computeHumanRetryDelayMs = (attempts: number, taskId: string): number => {
-  const seed = hashToInt(taskId) % 1000;
+const computeHumanRetryDelayMs = (attempts: number, stableKey: string): number => {
+  const seed = hashToInt(String(stableKey || "fallback-retry-key")) % 1000;
   const jitter = seed / 1000;
   if (attempts <= 1) return Math.round(2000 + 3000 * jitter);
   if (attempts === 2) return Math.round(10000 + 20000 * jitter);
@@ -441,7 +441,7 @@ export class DispatchEngine {
         });
 
         if (!finalResult.ok && finalResult.retryable) {
-          return { ok: false, retry: true, delayMs: computeHumanRetryDelayMs(task.attempts, taskId) };
+          return { ok: false, retry: true, delayMs: computeHumanRetryDelayMs(task.attempts, finalSession.id || taskId) };
         }
         return { ok: finalResult.ok, retry: false };
       }
@@ -456,7 +456,7 @@ export class DispatchEngine {
         status: 599,
         gatewayCode: String(finalError?.code || "GW_599_SHADOW_FAILOVER_EXHAUSTED"),
       });
-      return { ok: false, retry: true, delayMs: computeHumanRetryDelayMs(task.attempts, taskId) };
+      return { ok: false, retry: true, delayMs: computeHumanRetryDelayMs(task.attempts, finalSession.id || taskId) };
     });
   }
 

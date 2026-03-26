@@ -8,8 +8,18 @@ import { buildOrderedHeaderTuples } from "./header-order.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const GATEWAY_TIMEOUT_JITTER_RATIO = Math.min(0.35, Math.max(0, Number(process.env.GATEWAY_TIMEOUT_JITTER_RATIO || 0.12)));
+const GATEWAY_REQUEST_LOG_ENABLED = process.env.GATEWAY_REQUEST_LOG_ENABLED !== "false";
+const GATEWAY_FINGERPRINT_LOG_SAMPLE_PERCENT = Math.max(
+  0,
+  Math.min(100, Number(process.env.GATEWAY_FINGERPRINT_LOG_SAMPLE_PERCENT || 2))
+);
 
 const buildTraceId = () => `gw-${crypto.randomUUID()}`;
+
+const hashToInt = (input: string): number => {
+  const hex = crypto.createHash("sha256").update(input).digest("hex");
+  return parseInt(hex.slice(0, 8), 16);
+};
 
 const toHeadersObject = (headers: Headers): Record<string, string> => {
   const out: Record<string, string> = {};
@@ -41,7 +51,13 @@ const buildStableHeaders = (
   baseHeaders: Record<string, string>,
   sessionId: string,
   platform: "iOS" | "Android"
-): { headers: Record<string, string>; headerOrderSeed: number; retryJitterSeed: number } => {
+): {
+  headers: Record<string, string>;
+  headerOrderSeed: number;
+  retryJitterSeed: number;
+  tlsProfile: "cfnetwork" | "okhttp";
+  h2Settings: { weight: number; windowSize: number };
+} => {
   const fp = deriveFingerprint(sessionId, platform);
   return {
     headers: {
@@ -52,7 +68,26 @@ const buildStableHeaders = (
     },
     headerOrderSeed: fp.headerOrderSeed,
     retryJitterSeed: fp.retryJitterSeed,
+    tlsProfile: fp.tlsProfile,
+    h2Settings: fp.h2Settings,
   };
+};
+
+const shouldSampleFingerprintLog = (sessionId: string): boolean => {
+  if (GATEWAY_FINGERPRINT_LOG_SAMPLE_PERCENT <= 0) return false;
+  const score = hashToInt(`fp-log:${String(sessionId || "unknown-session")}`) % 100;
+  return score < GATEWAY_FINGERPRINT_LOG_SAMPLE_PERCENT;
+};
+
+const logGatewayRequest = (payload: {
+  sessionId: string;
+  traceId: string;
+  latency: number;
+  status: number;
+  retryCount: number;
+}) => {
+  if (!GATEWAY_REQUEST_LOG_ENABLED) return;
+  console.log("[gateway:request]", JSON.stringify(payload));
 };
 
 const shouldStripOutboundHeader = (name: string): boolean => {
@@ -126,6 +161,17 @@ export const sendViaTransportDriver = async (input: {
     input.packet.metadata.sessionId,
     input.packet.metadata.platform
   );
+  if (shouldSampleFingerprintLog(input.packet.metadata.sessionId)) {
+    console.log(
+      "[gateway:fingerprint]",
+      JSON.stringify({
+        sessionId: input.packet.metadata.sessionId,
+        tlsProfile: stable.tlsProfile,
+        h2: stable.h2Settings,
+        headerSeed: stable.headerOrderSeed,
+      })
+    );
+  }
   const maxRetries = Math.max(0, Math.min(Number(input.maxRetries || 0), 2));
 
   while (attempt <= maxRetries) {
@@ -154,6 +200,13 @@ export const sendViaTransportDriver = async (input: {
       clearTimeout(timer);
       const responseBody = await res.text();
       const latencyMs = Date.now() - startedAt;
+      logGatewayRequest({
+        sessionId: input.packet.metadata.sessionId,
+        traceId,
+        latency: latencyMs,
+        status: res.status,
+        retryCount: attempt,
+      });
       return {
         traceId,
         status: res.status,
@@ -170,6 +223,13 @@ export const sendViaTransportDriver = async (input: {
       const canRetry = attempt < maxRetries;
 
       if (!canRetry) {
+        logGatewayRequest({
+          sessionId: input.packet.metadata.sessionId,
+          traceId,
+          latency: Date.now() - startedAt,
+          status: isTimeout ? 504 : 503,
+          retryCount: attempt,
+        });
         throw new GatewayError({
           message: isTimeout ? "transport timeout" : `transport network error: ${err?.message || err}`,
           code: isTimeout ? GatewayErrorCode.TRANSPORT_TIMEOUT : GatewayErrorCode.TRANSPORT_NETWORK_ERROR,

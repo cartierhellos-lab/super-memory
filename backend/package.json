@@ -14,6 +14,7 @@
     "test:stateless": "tsx src/tests/stateless-sender.test.ts",
     "test:protocol-matrix": "tsx src/tests/protocol-send-matrix.test.ts",
     "test:gateway-smoke": "tsx src/tests/gateway-smoke.test.ts",
+    "test:deploy-strategy": "tsx src/tests/deploy-strategy-check.test.ts",
     "test:media-dispatch-smoke": "tsx src/tests/media-dispatch-smoke.test.ts",
     "test:gateway-orchestrator": "tsx src/tests/gateway-orchestrator-concurrency.test.ts",
     "test:scheduler-components": "tsx src/tests/scheduler-components-smoke.test.ts",
