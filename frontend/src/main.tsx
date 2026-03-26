@@ -130,15 +130,3 @@ initApp().catch(err => {
     }
   }
 });
-
-// Service Worker 已禁用：使用 serve -s dist 时 /sw.js 会回退到 index.html，MIME 为 text/html 导致注册失败。
-// 若需 PWA，请确保构建产出 sw.js 并由服务器正确提供（或使用 Vite 开发服务器）。
-// if ('serviceWorker' in navigator) {
-//   window.addEventListener('load', () => {
-//     navigator.serviceWorker.register('/sw.js').then(registration => {
-//       console.log('SW registered: ', registration);
-//     }).catch(registrationError => {
-//       console.log('SW registration failed: ', registrationError);
-//     });
-//   });
-// }
