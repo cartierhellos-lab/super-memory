@@ -238,6 +238,8 @@ async function ensureSchedulerSchema(conn: any) {
     "CREATE INDEX idx_message_tasks_status_schedule ON message_tasks (status, scheduled_at, created_at)",
     "CREATE INDEX idx_message_tasks_lock_state ON message_tasks (status, locked_at)",
     "CREATE INDEX idx_message_tasks_sub_status ON message_tasks (sub_account_id, status)",
+    "CREATE INDEX idx_message_tasks_tenant_phone_created ON message_tasks (tenant_id, target_phone, created_at)",
+    "CREATE INDEX idx_message_tasks_tenant_account_status ON message_tasks (tenant_id, account_id, status)",
     "CREATE INDEX idx_accounts_status_lock_state ON accounts (status, locked_at, last_used_at)",
   ];
 

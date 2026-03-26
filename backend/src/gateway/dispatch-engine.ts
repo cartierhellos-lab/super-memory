@@ -13,6 +13,7 @@ import { parseSessionPacket } from "../services/sender/stateless-sender.js";
 import { TenantResourceManager } from "./tenant-resource-manager.js";
 import { ProxyOrchestrator } from "./proxy-orchestrator.js";
 import { EventPublisher } from "../services/event-publisher.js";
+import { decideBehavior } from "../behavior/behavior-engine.js";
 
 export interface QueuedDispatchTask {
   taskId?: string;
@@ -39,7 +40,7 @@ export interface DispatchEngineOptions {
   onAlert?: (event: { sessionId: string; reason: string }) => void;
 }
 
-const SHADOW_FAILOVER_ENABLED = process.env.SHADOW_FAILOVER_ENABLED !== "false";
+const SHADOW_FAILOVER_ENABLED = process.env.SHADOW_FAILOVER_ENABLED === "true";
 const SHADOW_FAILOVER_MAX_ATTEMPTS = Math.max(
   0,
   Math.min(2, Number(process.env.SHADOW_FAILOVER_MAX_ATTEMPTS || 1))
@@ -48,6 +49,19 @@ const SHADOW_FAILOVER_COOLDOWN_MS = Math.max(
   0,
   Number(process.env.SHADOW_FAILOVER_COOLDOWN_MS || 120000)
 );
+
+const hashToInt = (input: string): number => {
+  const hex = crypto.createHash("sha256").update(input).digest("hex");
+  return parseInt(hex.slice(0, 8), 16);
+};
+
+const computeHumanRetryDelayMs = (attempts: number, taskId: string): number => {
+  const seed = hashToInt(taskId) % 1000;
+  const jitter = seed / 1000;
+  if (attempts <= 1) return Math.round(2000 + 3000 * jitter);
+  if (attempts === 2) return Math.round(10000 + 20000 * jitter);
+  return 0;
+};
 
 type ShadowFailoverEvent = {
   ts: number;
@@ -264,7 +278,13 @@ export class DispatchEngine {
             });
       const session = acquireSessionCandidate();
       if (!session) {
-        return { ok: false, retry: true, delayMs: 30 };
+        return { ok: false, retry: true, delayMs: computeHumanRetryDelayMs(task.attempts, taskId) };
+      }
+
+      const behaviorDecision = decideBehavior(session.id);
+      if (behaviorDecision.type === "pause") {
+        this.rotator.release(session.id, { cooldownMs: behaviorDecision.delayMs });
+        return { ok: false, retry: true, delayMs: behaviorDecision.delayMs };
       }
 
       const executeAttempt = async (activeSession: SessionContext) => {
@@ -421,7 +441,7 @@ export class DispatchEngine {
         });
 
         if (!finalResult.ok && finalResult.retryable) {
-          return { ok: false, retry: true, delayMs: 80 };
+          return { ok: false, retry: true, delayMs: computeHumanRetryDelayMs(task.attempts, taskId) };
         }
         return { ok: finalResult.ok, retry: false };
       }
@@ -436,7 +456,7 @@ export class DispatchEngine {
         status: 599,
         gatewayCode: String(finalError?.code || "GW_599_SHADOW_FAILOVER_EXHAUSTED"),
       });
-      return { ok: false, retry: true, delayMs: 120 };
+      return { ok: false, retry: true, delayMs: computeHumanRetryDelayMs(task.attempts, taskId) };
     });
   }
 

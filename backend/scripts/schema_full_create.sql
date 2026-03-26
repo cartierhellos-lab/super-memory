@@ -108,6 +108,11 @@ CREATE TABLE IF NOT EXISTS message_tasks (
     FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
 );
+CREATE INDEX idx_message_tasks_status_schedule ON message_tasks (status, scheduled_at, created_at);
+CREATE INDEX idx_message_tasks_lock_state ON message_tasks (status, locked_at);
+CREATE INDEX idx_message_tasks_sub_status ON message_tasks (sub_account_id, status);
+CREATE INDEX idx_message_tasks_tenant_phone_created ON message_tasks (tenant_id, target_phone, created_at);
+CREATE INDEX idx_message_tasks_tenant_account_status ON message_tasks (tenant_id, account_id, status);
 
 -- 5. contacts（会话/联系人，inbound 与 chat 使用）
 CREATE TABLE IF NOT EXISTS contacts (

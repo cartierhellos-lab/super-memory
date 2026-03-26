@@ -1,12 +1,12 @@
 import crypto from "crypto";
+import { Readable } from "stream";
 import { GatewayPacket } from "./contracts.js";
 import { GatewayErrorCode, isRetryableStatus } from "./error-codes.js";
 import { GatewayError } from "./errors.js";
-import { getOrCreateFingerprint } from "./device-fingerprint-store.js";
+import { deriveFingerprint } from "./device-fingerprint-store.js";
+import { buildOrderedHeaderTuples } from "./header-order.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const GATEWAY_RETRY_BASE_MS = Math.max(50, Number(process.env.GATEWAY_RETRY_BASE_MS || 200));
-const GATEWAY_RETRY_MAX_MS = Math.max(GATEWAY_RETRY_BASE_MS, Number(process.env.GATEWAY_RETRY_MAX_MS || 3000));
 const GATEWAY_TIMEOUT_JITTER_RATIO = Math.min(0.35, Math.max(0, Number(process.env.GATEWAY_TIMEOUT_JITTER_RATIO || 0.12)));
 
 const buildTraceId = () => `gw-${crypto.randomUUID()}`;
@@ -30,23 +30,28 @@ const computeAttemptTimeoutMs = (baseTimeoutMs: number, attempt: number): number
   return withJitter(Math.min(90000, Math.max(1000, scaled)), GATEWAY_TIMEOUT_JITTER_RATIO);
 };
 
-const computeRetryDelayMs = (attempt: number): number => {
-  const exponential = GATEWAY_RETRY_BASE_MS * Math.pow(2, attempt);
-  const bounded = Math.min(GATEWAY_RETRY_MAX_MS, exponential);
-  return withJitter(bounded, 0.2);
+const computeRetryDelayMs = (attempt: number, seed: number): number => {
+  // Human-like retries: 1st retry in 2-5s, 2nd retry in 10-30s, then stop.
+  const jitter = (seed % 1000) / 1000;
+  if (attempt <= 0) return Math.round(2000 + 3000 * jitter);
+  return Math.round(10000 + 20000 * jitter);
 };
 
 const buildStableHeaders = (
   baseHeaders: Record<string, string>,
   sessionId: string,
   platform: "iOS" | "Android"
-): Record<string, string> => {
-  const fp = getOrCreateFingerprint(sessionId, platform);
+): { headers: Record<string, string>; headerOrderSeed: number; retryJitterSeed: number } => {
+  const fp = deriveFingerprint(sessionId, platform);
   return {
-    ...baseHeaders,
-    // Internal only. Do not forward to upstream.
-    __h2_weight: String(fp.h2Settings.weight),
-    __h2_window: String(fp.h2Settings.windowSize),
+    headers: {
+      ...baseHeaders,
+      // Internal only. Do not forward to upstream.
+      __h2_weight: String(fp.h2Settings.weight),
+      __h2_window: String(fp.h2Settings.windowSize),
+    },
+    headerOrderSeed: fp.headerOrderSeed,
+    retryJitterSeed: fp.retryJitterSeed,
   };
 };
 
@@ -55,8 +60,7 @@ const shouldStripOutboundHeader = (name: string): boolean => {
   if (!k) return true;
   if (k.startsWith("x-gw-")) return true;
   if (k.startsWith("x-h2-")) return true;
-  if (k.startsWith("x-ja3-")) return true;
-  if (k.startsWith("x-ja4-")) return true;
+  if (k.startsWith("x-ja")) return true;
   if (k === "x-device-fingerprint-policy") return true;
   if (k === "x-session-px") return true;
   if (k === "x-hardware-fingerprint") return true;
@@ -79,6 +83,30 @@ const sanitizeOutboundHeaders = (headers: Record<string, string>): Record<string
   return out;
 };
 
+const isReadableBody = (body: GatewayPacket["body"]): body is NodeJS.ReadableStream => {
+  return body instanceof Readable;
+};
+
+const readStreamIntoBuffer = (stream: NodeJS.ReadableStream): Promise<Buffer> =>
+  new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on("data", (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+    stream.on("error", reject);
+  });
+
+const createBodyFactory = async (body: GatewayPacket["body"]): Promise<(() => any) | undefined> => {
+  if (body == null) return undefined;
+  if (typeof body === "string" || Buffer.isBuffer(body)) return () => body;
+  if (isReadableBody(body)) {
+    const buffered = await readStreamIntoBuffer(body);
+    return () => buffered;
+  }
+  return () => body as any;
+};
+
 type EgressProfileApplier = (args: { profile: string; url: string; headers: Record<string, string> }) => Promise<void> | void;
 export const setEgressProfileApplier = (_fn: EgressProfileApplier | null) => {
   // kept for backward compatibility; transport no longer consumes egress profile headers
@@ -92,26 +120,34 @@ export const sendViaTransportDriver = async (input: {
   const traceId = buildTraceId();
   let attempt = 0;
   let lastError: unknown = null;
+  const bodyFactory = await createBodyFactory(input.packet.body);
+  const stable = buildStableHeaders(
+    input.packet.headers,
+    input.packet.metadata.sessionId,
+    input.packet.metadata.platform
+  );
+  const maxRetries = Math.max(0, Math.min(Number(input.maxRetries || 0), 2));
 
-  while (attempt <= input.maxRetries) {
+  while (attempt <= maxRetries) {
     const startedAt = Date.now();
     const controller = new AbortController();
     const attemptTimeoutMs = computeAttemptTimeoutMs(input.timeoutMs, attempt);
     const timer = setTimeout(() => controller.abort(), attemptTimeoutMs);
     try {
-      const stableHeaders = buildStableHeaders(
-        input.packet.headers,
-        input.packet.metadata.sessionId,
-        input.packet.metadata.platform
-      );
-      const { __h2_weight, __h2_window, ...wireHeaders } = stableHeaders;
-      const cleanWireHeaders = sanitizeOutboundHeaders(wireHeaders);
+      const wireHeaders = { ...stable.headers };
+      delete wireHeaders.__h2_weight;
+      delete wireHeaders.__h2_window;
+      const cleanWireHeaders = sanitizeOutboundHeaders({
+        ...wireHeaders,
+        "x-trace-id": traceId,
+      });
+      const orderedHeaders = buildOrderedHeaderTuples(cleanWireHeaders, stable.headerOrderSeed);
       const res = await fetch(
         input.packet.url,
         {
           method: input.packet.method,
-          headers: cleanWireHeaders,
-          body: input.packet.body as any,
+          headers: orderedHeaders,
+          body: bodyFactory ? (bodyFactory() as any) : undefined,
           signal: controller.signal,
         } as any // cast to avoid TS complaining about non‑standard fields
       );
@@ -131,7 +167,7 @@ export const sendViaTransportDriver = async (input: {
       clearTimeout(timer);
       lastError = err;
       const isTimeout = String(err?.name || "").includes("Abort");
-      const canRetry = attempt < input.maxRetries;
+      const canRetry = attempt < maxRetries;
 
       if (!canRetry) {
         throw new GatewayError({
@@ -143,7 +179,7 @@ export const sendViaTransportDriver = async (input: {
         });
       }
 
-      await sleep(computeRetryDelayMs(attempt));
+      await sleep(computeRetryDelayMs(attempt, stable.retryJitterSeed));
       attempt += 1;
     }
   }

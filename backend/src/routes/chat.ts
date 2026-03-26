@@ -201,7 +201,8 @@ router.get('/user/chat/accounts', async (req, res) => {
     const conn = await pool.getConnection();
     try {
         const tenantId = Number((req as any).tenantId ?? 1);
-        const limit = Number(req.query.limit || 50);
+        const limitRaw = Number(req.query.limit) || 50;
+        const limit = Math.min(200, Math.max(1, Math.floor(limitRaw)));
         const status = req.query.status as string; // 'pinned', 'banned', 'cooldown' etc.
 
         let whereClause = "WHERE a.tenant_id = ?";
@@ -334,7 +335,9 @@ const updateContact = async (phone: string, updates: any) => {
 router.post('/user/chat/conversations/:phone/pin', async (req, res) => {
     try {
         const { pinned } = req.body; // true/false
-        await updateContact(req.params.phone, { pinned: pinned ? 1 : 0 });
+        const phone = normalizePhone(req.params.phone);
+        if (!phone) return res.status(400).json({ code: 400, message: 'Invalid phone' });
+        await updateContact(phone, { pinned: pinned ? 1 : 0 });
         res.json({ code: 0, message: "Updated" });
     } catch (e: any) {
         res.status(500).json({ code: 500, message: e.message });
@@ -344,7 +347,9 @@ router.post('/user/chat/conversations/:phone/pin', async (req, res) => {
 router.post('/user/chat/conversations/:phone/ban', async (req, res) => {
     try {
         const { banned } = req.body;
-        await updateContact(req.params.phone, { banned: banned ? 1 : 0 });
+        const phone = normalizePhone(req.params.phone);
+        if (!phone) return res.status(400).json({ code: 400, message: 'Invalid phone' });
+        await updateContact(phone, { banned: banned ? 1 : 0 });
         res.json({ code: 0, message: "Updated" });
     } catch (e: any) {
         res.status(500).json({ code: 500, message: e.message });
@@ -354,7 +359,9 @@ router.post('/user/chat/conversations/:phone/ban', async (req, res) => {
 router.post('/user/chat/conversations/:phone/delete', async (req, res) => {
     try {
         const { deleted } = req.body;
-        await updateContact(req.params.phone, { deleted: deleted ? 1 : 0 });
+        const phone = normalizePhone(req.params.phone);
+        if (!phone) return res.status(400).json({ code: 400, message: 'Invalid phone' });
+        await updateContact(phone, { deleted: deleted ? 1 : 0 });
         res.json({ code: 0, message: "Updated" });
     } catch (e: any) {
         res.status(500).json({ code: 500, message: e.message });
@@ -363,7 +370,9 @@ router.post('/user/chat/conversations/:phone/delete', async (req, res) => {
 
 router.post('/user/chat/conversations/:phone/read', async (req, res) => {
     try {
-        await updateContact(req.params.phone, { unread_count: 0 });
+        const phone = normalizePhone(req.params.phone);
+        if (!phone) return res.status(400).json({ code: 400, message: 'Invalid phone' });
+        await updateContact(phone, { unread_count: 0 });
         res.json({ code: 0, message: "Marked as read" });
     } catch (e: any) {
         res.status(500).json({ code: 500, message: e.message });
