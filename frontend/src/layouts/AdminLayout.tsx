@@ -24,6 +24,8 @@ import {
   UserOutlined,
   LogoutOutlined,
   HeartFilled,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -64,12 +66,14 @@ const AdminLayout: React.FC = () => {
 
   // ------------------- 状态 -------------------
   const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [manualCollapsed, setManualCollapsed] = useState<boolean | null>(null);
 
   // ------------------- UI 计算 -------------------
-  const isSiderCollapsed = !screens.xl;      // xl 以上展开，以下折叠
+  const autoCollapsed = !screens.lg;
+  const isSiderCollapsed = manualCollapsed ?? autoCollapsed; // 手动优先
   const isCompact = !screens.xl;            // 按钮文字在窄屏下简化
   const isNarrow = !screens.lg;             // Header、Sider 里的间距
-  const siderWidth = screens.xl ? 248 : screens.lg ? 92 : 78;
+  const siderWidth = 224;
 
   // 选中的菜单项（兼容子路由）
   const selectedKey = useMemo(() => {
@@ -114,7 +118,7 @@ const AdminLayout: React.FC = () => {
   };
 
   const headerStyle: React.CSSProperties = {
-    background: 'var(--cm-surface)',
+    background: '#f7f8fa',
     borderBottom: `1px solid ${token.colorBorderSecondary}`,
     padding: isNarrow ? '10px 12px' : '0 24px',
     display: 'flex',
@@ -141,15 +145,16 @@ const AdminLayout: React.FC = () => {
       <Sider
         collapsible
         collapsed={isSiderCollapsed}
-        collapsedWidth={56}
+        trigger={null}
+        collapsedWidth={72}
         width={siderWidth}
         theme="dark"
         className="cm-sidebar"
           style={{
-          background: 'linear-gradient(180deg, var(--cm-surface), var(--cm-surface-soft))',
+          background: '#f5f6f8',
           borderRight: `1px solid ${token.colorBorderSecondary}`,
           paddingTop: isNarrow ? 12 : 16,
-          boxShadow: '1px 0 24px rgba(0, 0, 0, 0.12)',
+          boxShadow: 'none',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -170,34 +175,34 @@ const AdminLayout: React.FC = () => {
                 justifyContent: isSiderCollapsed ? 'center' : 'flex-start',
                 gap: 12,
                 padding: isSiderCollapsed ? 0 : '10px 14px',
-                borderRadius: 18,
-                border: '1px solid var(--cm-border)',
-                background: 'linear-gradient(135deg, rgba(255,255,255,0.94), rgba(248,244,242,0.98))',
+                borderRadius: 12,
+                border: '1px solid #e1e6ec',
+                background: '#ffffff',
               }}
             >
             <div
               style={{
-                width: isNarrow ? 34 : 38,
-                height: isNarrow ? 34 : 38,
+                width: isNarrow ? 34 : 36,
+                height: isNarrow ? 34 : 36,
                 borderRadius: 18,
-                background: 'var(--cm-brand-gradient)',
+                background: 'linear-gradient(135deg, #e33b5b, #b91f3f)',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#fff',
                 fontWeight: 'bold',
-                fontSize: isNarrow ? 12 : 13,
-                boxShadow: '0 12px 24px rgba(31, 26, 24, 0.18)',
+                fontSize: 12,
+                boxShadow: 'none',
               }}
             >
               CM
             </div>
             {!isSiderCollapsed && (
               <div style={{ textAlign: 'left' }}>
-                <div className="cm-brand-title" style={{ color: 'var(--cm-text-primary)', fontSize: 14, fontWeight: 700 }}>
+                <div className="cm-brand-title" style={{ color: '#c61f3a', fontSize: 13, fontWeight: 700 }}>
                   {t('brand.name', { defaultValue: 'Cartier&Miller' })}
                 </div>
-                <Text style={{ color: 'var(--cm-text-secondary)', fontSize: 11 }}>
+                <Text style={{ color: 'var(--cm-text-secondary)', fontSize: 10 }}>
                   {t('shell.control_center', { defaultValue: 'Control Center' })}
                 </Text>
               </div>
@@ -230,8 +235,14 @@ const AdminLayout: React.FC = () => {
       <Layout style={{ minWidth: 0, overflow: 'hidden' }}>
         {/* Header */}
         <Header style={headerStyle} className="cm-header">
-          <div>
-            <Text strong className="cm-brand-title" style={{ fontSize: isNarrow ? 16 : 18, color: 'var(--cm-text-primary)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Button
+              type="text"
+              aria-label={isSiderCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              icon={isSiderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setManualCollapsed((prev) => (prev == null ? !autoCollapsed : !prev))}
+            />
+            <Text strong className="cm-brand-title" style={{ fontSize: isNarrow ? 16 : 18, color: '#c61f3a' }}>
               {t('brand.name', { defaultValue: 'Cartier&Miller' })}
             </Text>
           </div>
@@ -286,7 +297,6 @@ const AdminLayout: React.FC = () => {
                     key: 'logout',
                     icon: <LogoutOutlined />,
                     label: t('common.logout', { defaultValue: '退出登录' }),
-                    danger: true,
                     onClick: handleLogout,
                   },
                 ],

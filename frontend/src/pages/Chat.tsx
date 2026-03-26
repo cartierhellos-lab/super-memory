@@ -19,16 +19,13 @@ import {
 import {
   EditOutlined,
   MessageOutlined,
-  PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
   SendOutlined,
   SettingOutlined,
-  ThunderboltOutlined,
   TranslationOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import api from "../api";
 import { readTenantScopeObject, writeTenantScope } from "../utils/tenantScope";
 
@@ -126,7 +123,6 @@ const saveRemarkStore = (value: Record<string, ChatRemark>) => {
 
 const Chat: React.FC = () => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { token } = useToken();
   const tenantScope = readTenantScopeObject();
   const [tenantId, setTenantId] = useState<string>(tenantScope.tenantId);
@@ -182,31 +178,6 @@ const Chat: React.FC = () => {
     });
   }, [conversations, remarkStore, searchTerm, statusTab]);
 
-  const chatStats = useMemo(
-    () => [
-      {
-        label: t("chat.total_conversations"),
-        value: conversations.length,
-        meta: t("chat.total_conversations_meta"),
-      },
-      {
-        label: t("chat.unread_signals"),
-        value: conversations.reduce((sum, item) => sum + (item.unreadCount ?? 0), 0),
-        meta: t("chat.unread_signals_meta"),
-      },
-      {
-        label: t("chat.restricted_threads"),
-        value: conversations.filter((item) => item.banned).length,
-        meta: t("chat.restricted_threads_meta"),
-      },
-      {
-        label: t("chat.remarked_contacts"),
-        value: Object.keys(remarkStore).length,
-        meta: t("chat.remarked_contacts_meta"),
-      },
-    ],
-    [conversations, remarkStore, t]
-  );
   const selectedConversationHealth = selectedChat
     ? getAccountStatusKind(selectedChat.status)
     : "normal";
@@ -443,52 +414,23 @@ const Chat: React.FC = () => {
     }
   };
 
-  const focusComposer = () => {
-    const input = document.querySelector(".cm-compose-shell textarea") as HTMLTextAreaElement | null;
-    input?.focus();
-  };
-
   return (
-    <div className="cm-page" style={{ padding: 16 }}>
-      <div className="cm-page-header cm-page-header--dashboard">
-        <div>
-          <Text className="cm-kpi-eyebrow">{t("chat.page_eyebrow")}</Text>
-        </div>
-        <Space wrap>
-          <Button onClick={focusComposer} disabled={!selectedChat}>
-            {t("chat.focus.review_live_threads", { defaultValue: "定位输入区" })}
-          </Button>
-          <Button onClick={() => setSettingsOpen(true)}>{t("common.settings")}</Button>
-          <Button icon={<ReloadOutlined />} onClick={fetchConversations}>{t("common.refresh")}</Button>
-        </Space>
-      </div>
-
-      <div className="cm-toolbar-shell">
-        <div className="cm-toolbar-stats">
-          {chatStats.slice(0, 3).map((item, index) => (
-            <div
-              key={`${index}-${item.label}`}
-              className={`cm-toolbar-stat cm-toolbar-stat--${index === 0 ? "cooldown" : index === 1 ? "ready" : "dead"}`}
-            >
-              <span className="cm-toolbar-stat__label">{item.label}</span>
-              <strong className="cm-toolbar-stat__value">{item.value}</strong>
-              <span className="cm-toolbar-stat__meta">{item.meta}</span>
-            </div>
-          ))}
-        </div>
-        <div className="cm-toolbar-group cm-toolbar-group--actions">
-          <Button onClick={() => navigate("/admin/dashboard")}>{t("chat.open_dashboard")}</Button>
-          <Button onClick={() => setRemarkOpen(true)} disabled={!selectedChat}>{t("chat.edit_remark")}</Button>
-        </div>
-      </div>
-
+    <div className="cm-page cm-page--chat" style={{ padding: 16 }}>
       <div className="cm-chat-shell">
         <div className="cm-chat-sidebar cm-chat-sidebar__panel">
           <div className="cm-chat-sidebar__header">
-            <Text className="cm-kpi-eyebrow">{t("chat.conversations")}</Text>
-            <Title level={4} style={{ margin: "6px 0 4px", color: "var(--cm-text-primary)" }}>
-              {t("chat.queue_filters")}
-            </Title>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <div>
+                <Text className="cm-kpi-eyebrow">{t("chat.conversations")}</Text>
+                <Title level={4} style={{ margin: "4px 0 0", color: "var(--cm-text-primary)" }}>
+                  {t("chat.queue_filters")}
+                </Title>
+              </div>
+              <Space size={6}>
+                <Button size="small" icon={<ReloadOutlined />} onClick={fetchConversations} />
+                <Button size="small" icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)} />
+              </Space>
+            </div>
           </div>
           <Input
             placeholder={t("chat.search_placeholder")}
@@ -509,8 +451,8 @@ const Chat: React.FC = () => {
               <Button
                 key={option.value}
                 size="small"
-                type={statusTab === option.value ? "primary" : "default"}
-                className={statusTab === option.value ? "cm-primary-button" : undefined}
+                type="default"
+                className={statusTab === option.value ? "cm-chat-filter-btn cm-chat-filter-btn--active" : "cm-chat-filter-btn"}
                 onClick={() => setStatusTab(option.value as typeof statusTab)}
               >
                 {option.label}
@@ -521,16 +463,8 @@ const Chat: React.FC = () => {
           {loadingConvs ? (
             <Spin style={{ marginTop: 30 }} />
           ) : filteredConversations.length === 0 ? (
-            <div className="cm-empty-state">
-              <div className="cm-empty-hero">
-                <div className="cm-empty-badge"><MessageOutlined /></div>
-                <Title level={4} style={{ color: "var(--cm-text-primary)", marginBottom: 8 }}>{t("chat.empty_title")}</Title>
-                <Text style={{ color: "var(--cm-text-secondary)" }}>{t("chat.empty_copy")}</Text>
-                <Space style={{ marginTop: 16 }}>
-                  <Button type="primary" className="cm-primary-button" icon={<PlusOutlined />} onClick={() => navigate("/admin/dashboard")}>{t("chat.create_first_task")}</Button>
-                  <Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)}>{t("common.settings")}</Button>
-                </Space>
-              </div>
+            <div style={{ padding: "12px 8px", color: "var(--cm-text-secondary)" }}>
+              {t("chat.empty_copy")}
             </div>
           ) : (
             <List
@@ -541,7 +475,7 @@ const Chat: React.FC = () => {
                 const displayName = remark.displayName || chat.name || formatPhoneNumber(chat.phone);
                 const notePreview = remark.notes || chat.lastMessage || t("chat.no_messages_preview");
                 const statusKind = getAccountStatusKind(chat.status);
-                const statusTone: Record<string, string> = { normal: "green", paused: "gold", busy: "blue", banned: "red" };
+                const statusTone: Record<string, string> = { normal: "green", paused: "gold", busy: "blue", banned: "default" };
                 const statusLabel = t(`status.account.${statusKind}`, { defaultValue: statusKind });
                 const active = selectedChat?.id === chat.id;
                 return (
@@ -604,7 +538,7 @@ const Chat: React.FC = () => {
                           ? "gold"
                           : selectedConversationHealth === "busy"
                             ? "blue"
-                            : "red"
+                            : "default"
                     }
                     style={{ borderRadius: 999 }}
                   >
@@ -629,36 +563,12 @@ const Chat: React.FC = () => {
             {loadingMsgs ? (
               <Spin />
             ) : !selectedChat ? (
-              <div className="cm-empty-state">
-                <div className="cm-empty-hero">
-                  <div className="cm-empty-badge"><ThunderboltOutlined /></div>
-                  <Title level={3} style={{ color: "var(--cm-text-primary)", marginBottom: 8 }}>
-                    {t("chat.workspace_standby_title")}
-                  </Title>
-                  <Text style={{ color: "var(--cm-text-secondary)" }}>{t("chat.workspace_standby_copy")}</Text>
-                  <Space style={{ marginTop: 16 }}>
-                    <Button type="primary" className="cm-primary-button" onClick={() => setStatusTab("normal")}>
-                      {t("chat.focus_active_queue")}
-                    </Button>
-                    <Button onClick={() => setSettingsOpen(true)}>{t("chat.workspace_settings")}</Button>
-                  </Space>
-                </div>
+              <div style={{ padding: "12px 8px", color: "var(--cm-text-secondary)" }}>
+                {t("chat.workspace_standby_copy")}
               </div>
             ) : messages.length === 0 ? (
-              <div className="cm-empty-state">
-                <div className="cm-empty-hero">
-                  <div className="cm-empty-badge"><MessageOutlined /></div>
-                  <Title level={4} style={{ color: "var(--cm-text-primary)", marginBottom: 8 }}>
-                    {t("chat.thread_empty_title")}
-                  </Title>
-                  <Text style={{ color: "var(--cm-text-secondary)" }}>{t("chat.thread_empty_copy")}</Text>
-                  <Space style={{ marginTop: 16 }}>
-                    <Button type="primary" className="cm-primary-button" onClick={() => setRemarkOpen(true)}>
-                      {t("chat.add_commercial_note")}
-                    </Button>
-                    <Button onClick={focusComposer}>{t("chat.draft_first_reply")}</Button>
-                  </Space>
-                </div>
+              <div style={{ padding: "12px 8px", color: "var(--cm-text-secondary)" }}>
+                {t("chat.thread_empty_copy")}
               </div>
             ) : (
               messages.map((msg) => {
@@ -678,7 +588,7 @@ const Chat: React.FC = () => {
           </div>
 
           <div className="cm-compose-wrap">
-            <div className="cm-section-card cm-compose-shell">
+            <div className="cm-compose-shell">
               <div className="cm-compose-toolbar">
                 <Button
                   size="small"

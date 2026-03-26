@@ -38,7 +38,7 @@ export const useSelectionStyle = <T extends SelectionItem>(
     
     // Default mappings
     if (status.includes('dead') || status.includes('banned') || status.includes('failed')) {
-      return 'red';
+      return 'default';
     }
     if (status.includes('cooldown') || status.includes('warning') || status.includes('pending')) {
       return 'yellow';
@@ -95,13 +95,13 @@ export const useSelectionStyle = <T extends SelectionItem>(
     
     const color = getColor(item);
     
-    // Check if hovered or selected
-    if (hoveredKey === key || selectedKeys.includes(key)) {
+    // Keep visual highlight hover-only to avoid persistent selected colors.
+    if (hoveredKey === key) {
       return `selection-${color}`;
     }
     
     return '';
-  }, [hoveredKey, selectedKeys, getColor]);
+  }, [hoveredKey, getColor]);
 
   // Reset when items change
   useEffect(() => {

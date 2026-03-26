@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { message } from 'antd';
 import { clearAuth, setAuthToken } from '../utils/jwt-auth';
 import { apiUrl } from '../api';
-import { useTheme } from '../context/ThemeContext';
 import { getDefaultAdminRoute, normalizeAppRole } from '../utils/access-control';
 import './Login.css';
 
@@ -15,7 +14,6 @@ const createCaptcha = () =>
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const { i18n, t } = useTranslation();
-  const { theme, setTheme } = useTheme();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [captchaInput, setCaptchaInput] = useState('');
@@ -40,10 +38,6 @@ const Login: React.FC = () => {
   const refreshCaptcha = () => {
     setCaptcha(createCaptcha());
     setCaptchaInput('');
-  };
-
-  const toggleTheme = () => {
-    setTheme(theme === 'light' ? 'high-contrast' : 'light');
   };
 
   const handleLogin = async () => {
@@ -117,12 +111,10 @@ const Login: React.FC = () => {
         <button
           type="button"
           className="ctrlBtn"
-          onClick={toggleTheme}
-          title={theme === 'light'
-            ? t('login.switch_to_contrast', { defaultValue: isZh ? '切换到高对比' : 'Switch to contrast mode' })
-            : t('login.switch_to_light', { defaultValue: isZh ? '切换到浅色' : 'Switch to light mode' })}
+          onClick={refreshCaptcha}
+          title={t('login.refresh_captcha', { defaultValue: isZh ? '点击刷新验证码' : 'Click to refresh captcha' })}
         >
-          {theme === 'light' ? t('login.contrast', { defaultValue: 'Contrast' }) : t('login.light', { defaultValue: 'Light' })}
+          {t('login.refresh_captcha_short', { defaultValue: isZh ? '刷新验证码' : 'Refresh captcha' })}
         </button>
       </div>
 
@@ -139,20 +131,6 @@ const Login: React.FC = () => {
             {subtitleCopy}
           </p>
 
-          <div className="cm-feature-grid">
-            <div className="cm-feature-card">
-              <strong>{t('login.routing_health', { defaultValue: 'Routing Health' })}</strong>
-              <span>{t('login.routing_health_desc', { defaultValue: isZh ? '代理链路、失败任务和异常账户统一监控。' : 'Proxy health, failed tasks and locked accounts in one monitor.' })}</span>
-            </div>
-            <div className="cm-feature-card">
-              <strong>{t('login.session_stability', { defaultValue: 'Session Stability' })}</strong>
-              <span>{t('login.session_stability_desc', { defaultValue: isZh ? '凭证、会话与自动化动作保持连续。' : 'Credentials, sessions and automation actions stay consistent.' })}</span>
-            </div>
-            <div className="cm-feature-card">
-              <strong>{t('login.operator_clarity', { defaultValue: 'Operator Clarity' })}</strong>
-              <span>{t('login.operator_clarity_desc', { defaultValue: isZh ? '所有关键入口都以更强层级和反馈呈现。' : 'Primary actions and alerts use stronger hierarchy and feedback.' })}</span>
-            </div>
-          </div>
         </section>
 
         <section className="loginCard">

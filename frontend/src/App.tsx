@@ -22,7 +22,6 @@ import AdminLayout from './layouts/AdminLayout';
 import DesktopTitleBar from './components/DesktopTitleBar';
 import UpdatePromptModal from './components/UpdatePromptModal';
 import PrivacyModal from './components/PrivacyModal';
-import { useTheme } from './context/ThemeContext';
 
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -36,7 +35,6 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 
 const App = () => {
   const location = useLocation();
-  const { theme, brandColor } = useTheme();
   const { i18n } = useTranslation();
 
   useEffect(() => {
@@ -53,30 +51,27 @@ const App = () => {
   );
 
   const antdTheme = useMemo(() => ({
-      algorithm:
-        theme === 'dark' || theme === 'high-contrast'
-        ? antTheme.darkAlgorithm
-        : antTheme.defaultAlgorithm,
+      algorithm: antTheme.defaultAlgorithm,
     token: {
-      colorPrimary: brandColor || '#6f5f6b',
+      colorPrimary: '#55616c',
       colorInfo: '#5f7892',
       colorSuccess: '#2f7a62',
       colorWarning: '#9b7441',
       colorError: '#a35c68',
-      colorLink: brandColor || '#6f5f6b',
-      colorBgBase: theme === 'high-contrast' ? '#07090b' : theme === 'dark' ? '#101318' : '#f6f3f1',
-      colorBgLayout: theme === 'high-contrast' ? '#090b0d' : theme === 'dark' ? '#141920' : '#efeae7',
-      colorBgContainer: theme === 'high-contrast' ? '#14181c' : theme === 'dark' ? '#191f27' : '#ffffff',
-      colorBorder: theme === 'high-contrast' ? '#2d3540' : theme === 'dark' ? '#313844' : '#ddd6d2',
-      colorBorderSecondary: theme === 'high-contrast' ? '#232a34' : theme === 'dark' ? '#282f3a' : '#e8e1dd',
-      colorText: theme === 'high-contrast' ? '#ffffff' : theme === 'dark' ? '#f3efeb' : '#201c19',
-      colorTextSecondary: theme === 'high-contrast' ? '#cad2da' : theme === 'dark' ? '#b8b1ab' : '#655c57',
-      colorTextTertiary: theme === 'high-contrast' ? '#98a3ad' : '#8d827b',
+      colorLink: '#55616c',
+      colorBgBase: '#f6f3f1',
+      colorBgLayout: '#efeae7',
+      colorBgContainer: '#ffffff',
+      colorBorder: '#ddd6d2',
+      colorBorderSecondary: '#e8e1dd',
+      colorText: '#201c19',
+      colorTextSecondary: '#655c57',
+      colorTextTertiary: '#8d827b',
       borderRadius: 14,
       borderRadiusLG: 22,
       fontFamily: "'IBM Plex Sans', 'Segoe UI', sans-serif",
     },
-  }), [theme, brandColor]);
+  }), []);
 
   const showDesktopUI = isLoggedIn;
   const resolvedLanguage = i18n.resolvedLanguage || i18n.language || 'en-US';

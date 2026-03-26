@@ -4,7 +4,6 @@
 import React, { memo, useCallback, useEffect } from "react";
 import { MinusOutlined, CloseOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
-import { useTheme } from "../context/ThemeContext";
 import "./DesktopTitleBar.css";
 
 /**
@@ -16,11 +15,10 @@ const isTauri = typeof window !== "undefined" && "__TAURI__" in window;
 /**
  * DesktopTitleBar Props
  *   - title: 需要在标题栏显示的文字，默认 “Cartier&Miller”
- *   - brandColor: 若不想使用 ThemeContext 的颜色，可直接传入
+ *   - brandColor: 可选覆盖默认品牌色
  */
 interface DesktopTitleBarProps {
   title?: string;
-  /** 覆盖 ThemeContext 中的 brandColor（可选） */
   brandColor?: string;
 }
 
@@ -33,10 +31,9 @@ const DesktopTitleBar: React.FC<DesktopTitleBarProps> = ({
   brandColor,
 }) => {
   const { t } = useTranslation();
-  const { brandColor: themeBrandColor } = useTheme();
 
-  // ---------- 颜色（优先级：prop > context > 默认） ----------
-  const finalColor = brandColor ?? themeBrandColor ?? "#55616c";
+  // ---------- 颜色（优先级：prop > 默认） ----------
+  const finalColor = brandColor ?? "#55616c";
   const finalTitle = title ?? t('brand.name', { defaultValue: 'Cartier&Miller' });
 
   // ---------- 按钮事件（动态加载 Tauri API，仅在 Tauri 环境执行，浏览器不加载） ----------

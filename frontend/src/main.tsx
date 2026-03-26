@@ -5,9 +5,7 @@ import App from './App';
 import { i18nReady } from './i18n';
 import 'antd/dist/reset.css';
 import './styles/global.css';
-import './styles/theme.css';
 import './components/DesktopTitleBar.css';
-import { ThemeProvider } from './context/ThemeContext';
 import { TauriAuthManager } from './utils/tauri-auth-manager';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 
@@ -71,11 +69,9 @@ function renderApp() {
 
   const Root: React.FC = () => {
     return (
-      <ThemeProvider>
-        <BrowserRouter basename={routerBasename}>
-          <App />
-        </BrowserRouter>
-      </ThemeProvider>
+      <BrowserRouter basename={routerBasename}>
+        <App />
+      </BrowserRouter>
     );
   };
 
