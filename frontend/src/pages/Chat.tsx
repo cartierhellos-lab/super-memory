@@ -415,55 +415,7 @@ const Chat: React.FC = () => {
   };
 
   return (
-    <div className="cm-page cm-page--chat" style={{ padding: 0 }}>
-      <style>{`
-        .cm-chat-shell {
-          height: calc(100vh - 64px); /* 减去顶部 Header 高度 */
-          display: flex;
-          overflow: hidden;
-        }
-        .cm-chat-sidebar {
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-        }
-        .cm-chat-pane {
-          flex: 1;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-        }
-        .cm-thread-stream {
-          flex: 1;
-          overflow-y: auto !important;
-          padding: 16px;
-        }
-        /* 极简绿色滚动条样式 */
-        .cm-thread-stream::-webkit-scrollbar, 
-        .ant-list::-webkit-scrollbar {
-          width: 5px;
-        }
-        .cm-thread-stream::-webkit-scrollbar-track,
-        .ant-list::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .cm-thread-stream::-webkit-scrollbar-thumb,
-        .ant-list::-webkit-scrollbar-thumb {
-          background-color: rgba(64, 169, 137, 0.2);
-          border-radius: 10px;
-        }
-        .cm-thread-stream::-webkit-scrollbar-thumb:hover,
-        .ant-list::-webkit-scrollbar-thumb:hover {
-          background-color: rgba(64, 169, 137, 0.4);
-        }
-        .cm-compose-wrap {
-          flex-shrink: 0;
-          background: #fff;
-          border-top: 1px solid rgba(0,0,0,0.05);
-        }
-      `}</style>
-      
+    <div className="cm-page cm-page--chat" style={{ padding: 16 }}>
       <div className="cm-chat-shell">
         <div className="cm-chat-sidebar cm-chat-sidebar__panel">
           <div className="cm-chat-sidebar__header">
@@ -486,7 +438,7 @@ const Chat: React.FC = () => {
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
             allowClear
-            style={{ marginBottom: 12, paddingLeft: 12, paddingRight: 12 }}
+            style={{ marginBottom: 12 }}
           />
           <div className="cm-chat-filter-row">
             {[
@@ -566,8 +518,8 @@ const Chat: React.FC = () => {
           )}
         </div>
 
-        <div className="cm-chat-pane cm-chat-pane__panel">
-          <div className="cm-thread-head" style={{ flexShrink: 0 }}>
+        <div className="cm-chat-pane cm-chat-pane__panel" style={{ display: "flex", flexDirection: "column" }}>
+          <div className="cm-thread-head">
             <div>
               <Text className="cm-kpi-eyebrow">{t("chat.live_thread")}</Text>
               <Title level={4} style={{ margin: "6px 0 4px", color: "var(--cm-text-primary)" }}>
@@ -636,7 +588,7 @@ const Chat: React.FC = () => {
           </div>
 
           <div className="cm-compose-wrap">
-            <div className="cm-compose-shell" style={{ padding: 16 }}>
+            <div className="cm-compose-shell">
               <div className="cm-compose-toolbar">
                 <Button
                   size="small"
