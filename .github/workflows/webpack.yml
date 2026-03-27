@@ -2,7 +2,6 @@ name: React Build Workflow
 
 on:
   push:
-    # 监听你的 React 分支和主分支
     branches: [ "main", "React" ]
   pull_request:
     branches: [ "main", "React" ]
@@ -11,28 +10,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [20.x]
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Use Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
-          # 指定子目录下的 lock 文件路径来启用缓存
-          cache: 'npm'
-          cache-dependency-path: './前端/package-lock.json'
+          node-version: 20
 
-      - name: Install dependencies
-        # 告诉 GitHub 进入“前端”文件夹执行安装
-        working-directory: ./前端
-        run: npm install
-
-      - name: Build Project
-        # 告诉 GitHub 进入“前端”文件夹执行打包
-        working-directory: ./前端
-        run: npm run build
+      - name: Install and Build
+        run: |
+          # 动态查找包含 package.json 的目录并进入
+          TARGET_DIR=$(find . -name "package.json" -not -path "*/node_modules/*" -exec dirname {} \;)
+          echo "Target directory found: $TARGET_DIR"
+          cd "$TARGET_DIR"
+          
+          # 执行安装和打包
+          npm install
+          npm run build
