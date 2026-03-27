@@ -1,8 +1,8 @@
-name: NodeJS with Webpack (AI & Main Workflow)
+name: React Build Workflow
 
 on:
   push:
-    # 只要这两个分支有代码提交，都会触发构建测试
+    # 监听你的 React 分支和主分支
     branches: [ "main", "React" ]
   pull_request:
     branches: [ "main", "React" ]
@@ -13,7 +13,6 @@ jobs:
 
     strategy:
       matrix:
-        # 使用你项目中常用的 Node 版本
         node-version: [20.x]
 
     steps:
@@ -24,12 +23,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          # 指定子目录下的 lock 文件路径来启用缓存
           cache: 'npm'
+          cache-dependency-path: './前端/package-lock.json'
 
       - name: Install dependencies
-        # 安装前端项目所需的依赖
+        # 告诉 GitHub 进入“前端”文件夹执行安装
+        working-directory: ./前端
         run: npm install
 
-      - name: Build
-        # 执行 React 项目的打包任务，编译 Chat.tsx 等文件
+      - name: Build Project
+        # 告诉 GitHub 进入“前端”文件夹执行打包
+        working-directory: ./前端
         run: npm run build
