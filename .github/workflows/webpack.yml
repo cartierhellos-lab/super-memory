@@ -1,0 +1,35 @@
+name: NodeJS with Webpack (AI & Main Workflow)
+
+on:
+  push:
+    # 只要这两个分支有代码提交，都会触发构建测试
+    branches: [ "main", "React" ]
+  pull_request:
+    branches: [ "main", "React" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        # 使用你项目中常用的 Node 版本
+        node-version: [20.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        # 安装前端项目所需的依赖
+        run: npm install
+
+      - name: Build
+        # 执行 React 项目的打包任务，编译 Chat.tsx 等文件
+        run: npm run build
