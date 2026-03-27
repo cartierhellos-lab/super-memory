@@ -3,10 +3,10 @@ import express from 'express';
 import { pool } from '../shared/db.js';
 import { encrypt } from '../shared/crypto.js';
 import { getMissingRequiredFields, normalizeImportAccount } from '../shared/import-normalizer.js';
-import Redis from 'ioredis';
+import { createRedisClient } from '../shared/redis.js';
 
 const router = express.Router();
-const pubRedis = new (Redis as any)(process.env.REDIS_URL || 'redis://localhost:6379');
+const pubRedis = createRedisClient();
 
 const toTrimmed = (v: unknown): string => String(v ?? '').trim();
 const nullable = (v: unknown): string | null => {
@@ -334,7 +334,7 @@ router.post('/tn-accounts/import', async (req, res) => {
                             [
                                 acc.email || null,
                                 acc.username || null,
-                                acc.password || '123456',
+                                acc.password,
                                 acc.status || 'Ready',
                                 acc.platform || 'iOS',
                                 acc.proxyUrl || null,
@@ -374,7 +374,7 @@ router.post('/tn-accounts/import', async (req, res) => {
                                 acc.phone || null,
                                 acc.email || null,
                                 acc.username || null,
-                                acc.password || '123456',
+                                acc.password,
                                 acc.status || 'Ready',
                                 acc.platform || 'iOS',
                                 acc.proxyUrl || null,

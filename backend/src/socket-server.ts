@@ -1,18 +1,13 @@
 
 import { Server } from 'socket.io';
 import { Server as HttpServer } from 'http';
-import IORedis from 'ioredis';
+import { createRedisClient, redisRetryStrategy } from './shared/redis.js';
 
 let io: Server;
 
-/** Stop reconnecting after first failure when Redis is not running (avoids log flood). */
-const retryStrategy = process.env.DEBUG_REDIS === 'true'
-  ? undefined
-  : () => null;
-
-const subRedis = new (IORedis as any)(process.env.REDIS_URL || 'redis://localhost:6379', {
+const subRedis = createRedisClient({
   maxRetriesPerRequest: null,
-  retryStrategy,
+  retryStrategy: redisRetryStrategy,
   lazyConnect: true,
 });
 

@@ -4,14 +4,14 @@
  *
  * - 数据库：使用当前 .env 的 DB_*。在本地运行=检查本地 DB，在服务器上运行=检查服务器 DB。
  * - 会显示当前是「本地」还是「服务器」数据库（按 DB_HOST 判断）。
- * - 默认检查生产 API: https://hkd.llc/api。仅检查本机: API_BASE=http://127.0.0.1:3000 npx tsx scripts/check_db_and_api.ts
+ * - 默认检查本机 API: http://127.0.0.1:3000/api。仅检查本机: API_BASE=http://127.0.0.1:3000 npx tsx scripts/check_db_and_api.ts
  * - 远程调试：在服务器上启后端并设 DEBUG_DB_TARGET=true，然后访问 https://你的服务器/api/health 可看到该实例连接的 DB 目标。
  */
 import 'dotenv/config';
 import { pool } from '../src/shared/db.js';
 
 const PORT = Number(process.env.PORT || 3000);
-const API_BASE = process.env.API_BASE || process.env.VITE_API_BASE_URL || 'https://hkd.llc/api';
+const API_BASE = process.env.API_BASE || process.env.VITE_API_BASE_URL || 'http://127.0.0.1:3000/api';
 const apiBaseNormalized = API_BASE.replace(/\/+$/, '');
 
 const dbHost = process.env.DB_HOST || 'localhost';

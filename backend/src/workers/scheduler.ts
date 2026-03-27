@@ -5,9 +5,9 @@ import { pool } from '../shared/db.js';
 import { ensureProxySchema } from '../shared/proxy-schema.js';
 import { ensureCardCredentialSchema } from '../shared/card-credential-schema.js';
 import winston from 'winston';
-import IORedis from 'ioredis';
+import { createRedisClient } from '../shared/redis.js';
 
-const pubRedis = new (IORedis as any)(process.env.REDIS_URL || 'redis://localhost:6379');
+const pubRedis = createRedisClient();
 
 const logger = winston.createLogger({
   level: 'info',

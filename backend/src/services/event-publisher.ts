@@ -1,6 +1,6 @@
-import IORedis from 'ioredis';
+import { createRedisClient } from '../shared/redis.js';
 
-const pubRedis = new (IORedis as any)(process.env.REDIS_URL || 'redis://localhost:6379');
+const pubRedis = createRedisClient();
 
 /**
  * EventPublisher - 将事件发布到 Redis，供所有进程订阅

@@ -23,11 +23,13 @@ import { initSocket } from "./socket-server.js";
 import { tenantMiddleware } from "./middleware/tenant.js";
 import { metricsHandler, rateLimitMiddleware, requestAuditMiddleware } from "./middleware/ops.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { validateProductionEnv } from "./shared/env.js";
 
 const app = express();
 const server = http.createServer(app);
 const PORT = Number(process.env.PORT || 3000);
 const NODE_ENV = process.env.NODE_ENV || "development";
+validateProductionEnv();
 
 // 反向代理（Nginx 等）后正确识别协议与 Host，用于 CORS 同域放行与静态资源
 app.set("trust proxy", 1);
@@ -41,13 +43,12 @@ const parseAllowedOrigins = (): string[] => {
     "http://127.0.0.1:8080",
     "http://127.0.0.1:3000",
   ];
-  const productionDomain = ["https://hkd.llc", "http://hkd.llc", "https://www.hkd.llc", "http://www.hkd.llc"];
   const parsed = rawValues
     .flatMap((raw) => raw.split(","))
     .map((v) => v.trim())
     .filter(Boolean);
 
-  return Array.from(new Set([...parsed, ...tauriOrigins, ...localhostOrigins, ...productionDomain]));
+  return Array.from(new Set([...parsed, ...tauriOrigins, ...localhostOrigins]));
 };
 
 const allowedOrigins = parseAllowedOrigins();

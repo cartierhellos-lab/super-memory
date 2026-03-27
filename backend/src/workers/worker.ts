@@ -3,11 +3,11 @@ import { redisConnection } from './redis.js';
 import { pool } from '../shared/db.js';
 import { Cluster } from 'puppeteer-cluster';
 import winston from 'winston';
-import IORedis from 'ioredis';
+import { createRedisClient } from '../shared/redis.js';
 import TextNowAutomation from '../services/textnow-automation.js';
 import { decrypt } from '../shared/crypto.js';
 
-const pubRedis = new (IORedis as any)(process.env.REDIS_URL || 'redis://localhost:6379');
+const pubRedis = createRedisClient();
 const LOCK_RELEASE_LUA = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   return redis.call("DEL", KEYS[1])
