@@ -41,7 +41,8 @@
     "loading_data": "Loading data...",
     "no_data": "No data",
     "confirm_action": "Confirm action",
-    "cancel_action": "Cancel action"
+    "cancel_action": "Cancel action",
+    "remove": "Remove"
   },
   "brand": {
     "name": "Cartier&Miller"
@@ -489,6 +490,8 @@
     "translate_to_en": "Translate to English",
     "translate_to_zh": "Translate to Chinese",
     "send_original": "Send original",
+    "add_photo": "Add photo",
+    "image_ready": "Image ready",
     "send_translation": "Send translation",
     "message_placeholder": "Type a message, Enter to send, Shift + Enter for newline",
     "translating": "Translating...",
@@ -740,6 +743,7 @@
     "operator_clarity_desc": "Primary actions and alerts use stronger hierarchy and feedback.",
     "operator_sign_in": "Operator Sign In",
     "sign_in_title": "Sign in to control center",
+    "workspace_entry": "Enter workspace",
     "username_placeholder": "Enter your operator username",
     "password_placeholder": "Enter your password",
     "hide_password": "Hide password",
@@ -755,6 +759,7 @@
     "enter_control_center": "Enter Control Center",
     "switch_to_contrast": "Switch to contrast mode",
     "switch_to_light": "Switch to light mode",
+    "dark": "Dark",
     "contrast": "Contrast",
     "light": "Light",
     "footnote": "Signing in confirms awareness of the latest privacy and service agreement update."

@@ -10,6 +10,7 @@ import './Login.css';
 
 const createCaptcha = () =>
   Math.random().toString(36).slice(2, 6).toUpperCase();
+const LOGIN_THEME_KEY = 'cm-login-theme';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -17,19 +18,17 @@ const Login: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [captchaInput, setCaptchaInput] = useState('');
-  const [rememberPassword, setRememberPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [captcha, setCaptcha] = useState(() => createCaptcha());
+  const loginTheme = useMemo<'light' | 'dark'>(() => {
+    if (typeof window === 'undefined') return 'light';
+    const next = window.localStorage.getItem(LOGIN_THEME_KEY);
+    return next === 'dark' ? 'dark' : 'light';
+  }, []);
 
   const isZh = i18n.language === 'zh-CN' || i18n.language.startsWith('zh');
-  const titleCopy = t('login.hero_title', { defaultValue: isZh ? 'Cartier&Miller 控制入口' : 'Cartier&Miller Control Access' });
-  const subtitleCopy = t('login.hero_copy', {
-    defaultValue: isZh
-      ? '统一进入账户、消息、代理和任务调度中心。高风险状态会被优先突出，关键链路保持在同一套控制面板内。'
-      : 'Unified access to accounts, conversations, proxy routing and task orchestration. High-risk states are surfaced first and key links stay under one control surface.'
-  });
   const canSubmit = useMemo(
     () => Boolean(username.trim() && password.trim() && captchaInput.trim()) && !loading,
     [username, password, captchaInput, loading]
@@ -75,10 +74,7 @@ const Login: React.FC = () => {
         role: user.role,
         tenantId: user.tenantId,
       });
-
-      if (!rememberPassword) {
-        setPassword('');
-      }
+      setPassword('');
 
       navigate(getDefaultAdminRoute(normalizeAppRole(user.role)), { replace: true });
     } catch (err: any) {
@@ -98,52 +94,19 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="cm-login-shell">
+    <div className="cm-login-shell" data-theme={loginTheme}>
       <div className="cm-login-overlay" />
-      <div className="topBar">
-        <button
-          type="button"
-          className="ctrlBtn"
-          onClick={() => i18n.changeLanguage(isZh ? 'en-US' : 'zh-CN')}
-        >
-          {isZh ? 'EN' : '中文'}
-        </button>
-        <button
-          type="button"
-          className="ctrlBtn"
-          onClick={refreshCaptcha}
-          title={t('login.refresh_captcha', { defaultValue: isZh ? '点击刷新验证码' : 'Click to refresh captcha' })}
-        >
-          {t('login.refresh_captcha_short', { defaultValue: isZh ? '刷新验证码' : 'Refresh captcha' })}
-        </button>
-      </div>
-
       <div className="cm-login-layout">
-        <section className="cm-login-hero">
-          <div className="cm-login-brand-mark">
-            <img src="/favicon.png" alt={t('brand.name', { defaultValue: 'Cartier&Miller' })} />
-          </div>
-          <div className="cm-kpi-eyebrow">{t('login.secure_operator_access', { defaultValue: 'Secure Operator Access' })}</div>
-          <h1 className="cm-login-title cm-brand-title">
-            {titleCopy}
-          </h1>
-          <p className="cm-login-copy">
-            {subtitleCopy}
-          </p>
-
-        </section>
-
         <section className="loginCard">
           <div className="cm-login-card-top">
             <div className="cm-login-card-logo">
               <img src="/favicon.png" alt={t('brand.name', { defaultValue: 'Cartier&Miller' })} />
             </div>
-            <div>
-              <div className="cm-kpi-eyebrow">{t('login.operator_sign_in', { defaultValue: 'Operator Sign In' })}</div>
-              <div className="title">{t('login.sign_in_title', { defaultValue: isZh ? '登录控制台' : 'Sign in to control center' })}</div>
+            <div className="cm-login-card-brand">
+              <div className="title cm-brand-title">{t('brand.name', { defaultValue: 'Cartier&Miller' })}</div>
+              <div className="cm-kpi-eyebrow">{t('login.workspace_entry', { defaultValue: isZh ? '进入工作区' : 'Enter workspace' })}</div>
             </div>
           </div>
-
           {error ? <div className="errorText">{error}</div> : null}
 
           <div className="inputGroup">
@@ -212,22 +175,6 @@ const Login: React.FC = () => {
                 {captcha}
               </button>
             </div>
-          </div>
-
-          <div className="options">
-            <label htmlFor="login-remember">
-              <input
-                id="login-remember"
-                name="remember"
-                type="checkbox"
-                checked={rememberPassword}
-                onChange={(e) => setRememberPassword(e.target.checked)}
-              />{' '}
-              {t('login.remember_password', { defaultValue: isZh ? '记住密码' : 'Remember password' })}
-            </label>
-            <button type="button" className="linkBtn" onClick={refreshCaptcha}>
-              {t('login.refresh_captcha_short', { defaultValue: isZh ? '换一张验证码' : 'Refresh captcha' })}
-            </button>
           </div>
 
           <button

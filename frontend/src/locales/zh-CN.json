@@ -41,7 +41,8 @@
     "loading_data": "正在加载数据...",
     "no_data": "暂无数据",
     "confirm_action": "确认操作",
-    "cancel_action": "取消操作"
+    "cancel_action": "取消操作",
+    "remove": "移除"
   },
   "brand": {
     "name": "Cartier&Miller"
@@ -474,6 +475,8 @@
     "remark_notes": "备注内容",
     "empty_copy": "配置租户路由，或者先创建第一条任务来填充队列。",
     "send_original": "发送原文",
+    "add_photo": "添加照片",
+    "image_ready": "图片已就绪",
     "translation_hint": "输入两个字符以上后自动生成译文预览",
     "page_eyebrow": "消息管理",
     "page_title": "会话中心",
@@ -742,6 +745,7 @@
     "operator_clarity_desc": "所有关键入口都以更强层级和反馈呈现。",
     "operator_sign_in": "操作员登录",
     "sign_in_title": "登录控制台",
+    "workspace_entry": "进入工作区",
     "username_placeholder": "输入管理员账号",
     "password_placeholder": "输入登录密码",
     "hide_password": "隐藏密码",
@@ -757,6 +761,7 @@
     "enter_control_center": "进入控制台",
     "switch_to_contrast": "切换到高对比",
     "switch_to_light": "切换到浅色",
+    "dark": "深色",
     "contrast": "对比",
     "light": "浅色",
     "footnote": "登录即表示你已知悉当前隐私与服务协议更新。"

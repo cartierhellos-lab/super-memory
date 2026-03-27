@@ -17,7 +17,7 @@ const useRelativeApi =
   apiBaseEnv === undefined || String(apiBaseEnv).trim() === '';
 const rawApiBase = useRelativeApi
   ? '/api'
-  : String(apiBaseEnv || 'https://hkd.llc/api').trim();
+  : String(apiBaseEnv).trim();
 const normalizedApiBase = rawApiBase.replace(/\/+$/, '') || '/api';
 const baseHasApiSuffix = /\/api$/i.test(normalizedApiBase);
 

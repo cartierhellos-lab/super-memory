@@ -5,6 +5,7 @@ export type ChatMessage = {
   peer_phone: string;
   direction: "inbound" | "outbound";
   content: string;
+  media_url?: string;
   status: string;
   created_at: string;
 };
