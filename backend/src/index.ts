@@ -155,7 +155,17 @@ if (envFrontendDir) {
   }
 }
 app.use("/assets", express.static(path.join(FRONTEND_DIR, "assets")));
-app.use(express.static(FRONTEND_DIR));
+app.use(
+  express.static(FRONTEND_DIR, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    },
+  })
+);
 
 app.use("/", webControllerRouter);
 
@@ -166,6 +176,9 @@ app.get("*", (req, res, next) => {
     res.status(404).send("index.html not found. Check FRONTEND_DIR.");
     return;
   }
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   res.sendFile(indexPath);
 });
 app.use(errorHandler);

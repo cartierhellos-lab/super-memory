@@ -8,8 +8,19 @@ import { apiUrl } from '../api';
 import { getDefaultAdminRoute, normalizeAppRole } from '../utils/access-control';
 import './Login.css';
 
+const CAPTCHA_CHARS = '346789ABCDEFGHJKMNPQRTUVWXY';
+
 const createCaptcha = () =>
-  Math.random().toString(36).slice(2, 6).toUpperCase();
+  Array.from({ length: 4 }, () => CAPTCHA_CHARS[Math.floor(Math.random() * CAPTCHA_CHARS.length)]).join('');
+
+const normalizeCaptchaValue = (value: string) =>
+  value
+    .trim()
+    .toUpperCase()
+    .replace(/0/g, 'O')
+    .replace(/[IL]/g, '1')
+    .replace(/Z/g, '2')
+    .replace(/S/g, '5');
 const LOGIN_THEME_KEY = 'cm-login-theme';
 
 const Login: React.FC = () => {
@@ -47,7 +58,7 @@ const Login: React.FC = () => {
       return;
     }
 
-    if (captchaInput.trim().toUpperCase() !== captcha) {
+    if (normalizeCaptchaValue(captchaInput) !== normalizeCaptchaValue(captcha)) {
       const msg = isZh ? '验证码错误' : 'Captcha incorrect';
       setError(msg);
       message.error(msg);
