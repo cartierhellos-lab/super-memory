@@ -1,759 +1,412 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useRef, useState, useEffect } from "react";
 import {
   Avatar,
-  Badge,
   Button,
-  Drawer,
-  Form,
   Input,
-  List,
-  Select,
   Space,
-  Tag,
   Typography,
+  Tag,
+  Drawer,
   message,
-  Dropdown,
-  theme,
-  Spin,
 } from "antd";
 import {
-  EditOutlined,
-  MessageOutlined,
-  ReloadOutlined,
-  SearchOutlined,
+  PaperClipOutlined,
+  GlobalOutlined,
   SendOutlined,
+  SearchOutlined,
   SettingOutlined,
-  TranslationOutlined,
+  ReloadOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
-import { useTranslation } from "react-i18next";
-import api from "../api";
-import { readTenantScopeObject, writeTenantScope } from "../utils/tenantScope";
 
 const { TextArea } = Input;
-const { Text, Title } = Typography;
-const { useToken } = theme;
+const { Text } = Typography;
 
-type ChatMessage = {
-  id: number;
-  peer_phone: string;
-  direction: "inbound" | "outbound";
-  content: string;
-  status: string;
-  created_at: string;
-};
-
-type ChatItem = {
-  id: string;
-  name: string;
-  phone: string;
-  lastMessage?: string;
-  time?: string;
-  status?: string;
-  unreadCount?: number;
-  banned?: boolean;
-  pinned?: boolean;
-};
-
-type ChatRemark = {
-  displayName: string;
-  company: string;
-  tags: string[];
-  notes: string;
-  updatedAt?: string;
-};
-
-const REMARKS_STORAGE_KEY = "cm-chat-remarks-v1";
-const emptyRemark: ChatRemark = { displayName: "", company: "", tags: [], notes: "" };
-
-const formatTime = (value: string) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("zh-CN", { hour12: false });
-};
-
-const getAccountStatusKind = (status: string | undefined): "normal" | "paused" | "busy" | "banned" => {
-  const next = String(status ?? "").trim().toLowerCase();
-  if (next === "ready" || next === "normal") return "normal";
-  if (next === "cooldown") return "paused";
-  if (next === "busy") return "busy";
-  if (next === "dead" || next === "locked") return "banned";
-  return "banned";
-};
-
-const formatMessageStatus = (
-  status: string | undefined,
-  direction: "inbound" | "outbound",
-  t: (key: string, options?: any) => string
-) => {
-  const next = String(status ?? "").trim();
-  if (!next) return "-";
-  const lower = next.toLowerCase();
-  if (direction === "inbound") return lower === "received" ? t("chat.received_status") : next;
-  if (lower === "sent") return t("chat.delivered");
-  if (lower === "pending" || lower === "sending") return t("chat.sending");
-  if (lower === "failed") return t("chat.send_failed");
-  if (/delivered|成功|sent/i.test(next)) return t("chat.delivered");
-  return next;
-};
-
-const formatPhoneNumber = (phone: string) => {
-  if (!phone) return phone;
-  const cleaned = `${phone}`.replace(/\D/g, "");
-  const match10 = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
-  if (match10) return `+1 (${match10[1]}) ${match10[2]}-${match10[3]}`;
-  const match11 = cleaned.match(/^1(\d{3})(\d{3})(\d{4})$/);
-  if (match11) return `+1 (${match11[1]}) ${match11[2]}-${match11[3]}`;
-  return phone;
-};
-
-const loadRemarkStore = (): Record<string, ChatRemark> => {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(REMARKS_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
+/**
+ * 美国手机号格式化工具
+ * 将数字字符串转换为 +1 (XXX) XXX-XXXX 格式
+ */
+const formatUSPhone = (phoneStr) => {
+  if (!phoneStr) return "";
+  const cleaned = ("" + phoneStr).replace(/\D/g, "");
+  const match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
+  if (match) {
+    return `+1 (${match[2]}) ${match[3]}-${match[4]}`;
   }
+  return phoneStr;
 };
 
-const saveRemarkStore = (value: Record<string, ChatRemark>) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(REMARKS_STORAGE_KEY, JSON.stringify(value));
-};
-
-const Chat: React.FC = () => {
-  const { t } = useTranslation();
-  const { token } = useToken();
-  const tenantScope = readTenantScopeObject();
-  const [tenantId, setTenantId] = useState<string>(tenantScope.tenantId);
-  const [tenantNumber, setTenantNumber] = useState<string>(tenantScope.tenantNumber);
-  const [conversations, setConversations] = useState<ChatItem[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [selectedChat, setSelectedChat] = useState<ChatItem | null>(null);
-  const [loadingConvs, setLoadingConvs] = useState(false);
-  const [loadingMsgs, setLoadingMsgs] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusTab, setStatusTab] = useState<"all" | "normal" | "paused" | "busy" | "banned">("all");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [remarkOpen, setRemarkOpen] = useState(false);
-  const [remarkStore, setRemarkStore] = useState<Record<string, ChatRemark>>(() => loadRemarkStore());
-  const [remarkDraft, setRemarkDraft] = useState<ChatRemark>(emptyRemark);
-  const [translateEnabled, setTranslateEnabled] = useState(false);
-  const [translateTarget, setTranslateTarget] = useState<"zh" | "en">("en");
-  const [translatedDraft, setTranslatedDraft] = useState("");
-  const [detectedLanguage, setDetectedLanguage] = useState("");
-  const [translationError, setTranslationError] = useState("");
-  const [translating, setTranslating] = useState(false);
-  const [sendMode, setSendMode] = useState<"original" | "translated">("translated");
+const Chat = () => {
+  // --- 状态管理 ---
+  const [conversations, setConversations] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [selectedChat, setSelectedChat] = useState(null);
   const [draft, setDraft] = useState("");
+  const [activeTab, setActiveTab] = useState("全部");
+  const [transMode, setTransMode] = useState("原");
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isTranslationOn, setIsTranslationOn] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  const msgListRef = useRef<HTMLDivElement>(null);
-  const translateTimer = useRef<number | null>(null);
-  const translateSeqRef = useRef(0);
+  const msgListRef = useRef(null);
+  const statusTags = ["全部", "正常", "冷却", "忙碌", "受限"];
 
-  const selectedRemark = selectedChat ? remarkStore[selectedChat.id] ?? emptyRemark : emptyRemark;
-  const selectedDisplayName = selectedRemark.displayName || selectedChat?.name || (selectedChat ? formatPhoneNumber(selectedChat.phone) : "");
-
-  const filteredConversations = useMemo(() => {
-    const keyword = searchTerm.trim().toLowerCase();
-    return conversations.filter((conversation) => {
-      const remark = remarkStore[conversation.id];
-      const searchable = [
-        conversation.name,
-        conversation.phone,
-        conversation.lastMessage,
-        remark?.displayName,
-        remark?.company,
-        remark?.notes,
-        ...(remark?.tags ?? []),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      if (keyword && !searchable.includes(keyword)) return false;
-      if (statusTab === "all") return true;
-      return getAccountStatusKind(conversation.status) === statusTab;
-    });
-  }, [conversations, remarkStore, searchTerm, statusTab]);
-
-  const selectedConversationHealth = selectedChat
-    ? getAccountStatusKind(selectedChat.status)
-    : "normal";
-  const selectedConversationHealthLabel = t(`status.account.${selectedConversationHealth}`, {
-    defaultValue: selectedConversationHealth,
-  });
-
-  const scrollToBottom = useCallback(() => {
-    const element = msgListRef.current;
-    if (element) element.scrollTop = element.scrollHeight;
-  }, []);
-
-  const clearTranslationState = useCallback(() => {
-    setTranslatedDraft("");
-    setDetectedLanguage("");
-    setTranslationError("");
-    setTranslating(false);
-    setSendMode("translated");
-  }, []);
-
-  const fetchConversations = useCallback(async () => {
-    if (!tenantId) return;
-    setLoadingConvs(true);
-    try {
-      const res: any = await api.get("/user/chat/conversations", { params: { limit: 200 } });
-      const data = Array.isArray(res?.data) ? res.data : [];
-      setConversations(
-        data
-          .filter((row: any) => row && row.phone)
-          .map((row: any) => ({
-            id: String(row.phone),
-            name: formatPhoneNumber(String(row.phone)),
-            phone: String(row.phone),
-            lastMessage: row.last_message ?? "",
-            time: row.last_activity ? formatTime(String(row.last_activity)) : "",
-            status: row.account_status ?? undefined,
-            pinned: Boolean(row.pinned),
-            banned: Boolean(row.banned),
-            unreadCount: Number(row.unread_count || 0) || 0,
-          }))
-      );
-    } catch (error) {
-      console.error(error);
-      message.error(t("chat.fetch_conversations_failed"));
-    } finally {
-      setLoadingConvs(false);
-    }
-  }, [tenantId, t]);
-
-  const fetchMessages = useCallback(
-    async (chatId: string) => {
-      if (!tenantId) return;
-      setLoadingMsgs(true);
-      try {
-        const res: any = await api.get("/user/chat/messages", { params: { peerPhone: chatId, limit: 200 } });
-        setMessages(Array.isArray(res?.data) ? res.data : []);
-        window.setTimeout(scrollToBottom, 100);
-      } catch (error) {
-        console.error(error);
-        message.error(t("chat.fetch_messages_failed"));
-      } finally {
-        setLoadingMsgs(false);
-      }
-    },
-    [scrollToBottom, tenantId, t]
-  );
-
-  useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
-
-  useEffect(() => {
-    if (!selectedChat) {
-      setMessages([]);
-      return;
-    }
-    fetchMessages(selectedChat.id);
-  }, [fetchMessages, selectedChat]);
-
-  useEffect(() => {
-    setRemarkDraft(selectedChat ? remarkStore[selectedChat.id] ?? emptyRemark : emptyRemark);
-  }, [remarkStore, selectedChat]);
-
-  const requestTranslation = useCallback(
-    async (value: string) => {
-      const trimmed = value.trim();
-      if (!translateEnabled || trimmed.length < 2) {
-        clearTranslationState();
-        return;
-      }
-
-      const seq = ++translateSeqRef.current;
-      setTranslating(true);
-      setTranslationError("");
-
-      try {
-        const res: any = await api.post("/translate", { text: trimmed, targetLanguage: translateTarget });
-        if (seq !== translateSeqRef.current) return;
-        const translated = String(res?.translatedText ?? res?.data?.translatedText ?? "").trim();
-        const detected = String(res?.detectedLanguage ?? res?.data?.detectedLanguage ?? "").trim();
-        setTranslatedDraft(translated);
-        setDetectedLanguage(detected);
-        setSendMode(translated && translated !== trimmed ? "translated" : "original");
-      } catch (error: any) {
-        if (seq !== translateSeqRef.current) return;
-        setTranslationError(error?.response?.data?.error || error?.message || t("chat.translation_preview_failed"));
-        setTranslatedDraft("");
-        setSendMode("original");
-      } finally {
-        if (seq === translateSeqRef.current) setTranslating(false);
-      }
-    },
-    [clearTranslationState, translateEnabled, translateTarget]
-  );
-
-  useEffect(() => {
-    if (translateTimer.current) window.clearTimeout(translateTimer.current);
-    if (!translateEnabled || !draft.trim()) {
-      clearTranslationState();
-      return;
-    }
-    translateTimer.current = window.setTimeout(() => {
-      void requestTranslation(draft);
-    }, 700);
-    return () => {
-      if (translateTimer.current) window.clearTimeout(translateTimer.current);
-    };
-  }, [clearTranslationState, draft, requestTranslation, translateEnabled]);
-
-  const markRead = useCallback(async (id: string) => {
-    try {
-      await api.post(`/user/chat/conversations/${encodeURIComponent(id)}/read`, {});
-    } catch {}
-  }, []);
-
-  const togglePin = useCallback(async (id: string, pinned: boolean) => {
-    try {
-      await api.post(`/user/chat/conversations/${encodeURIComponent(id)}/pin`, { pinned });
-      message.success(t("chat.action_success"));
-      fetchConversations();
-    } catch {
-      message.error(t("chat.action_failed"));
-    }
-  }, [fetchConversations, t]);
-
-  const toggleBan = useCallback(async (id: string, banned: boolean) => {
-    try {
-      await api.post(`/user/chat/conversations/${encodeURIComponent(id)}/ban`, { banned });
-      message.success(t("chat.action_success"));
-      fetchConversations();
-    } catch {
-      message.error(t("chat.action_failed"));
-    }
-  }, [fetchConversations, t]);
-
-  const deleteChat = useCallback(async (id: string) => {
-    try {
-      await api.post(`/user/chat/conversations/${encodeURIComponent(id)}/delete`, { deleted: true });
-      message.success(t("chat.deleted"));
-      if (selectedChat?.id === id) setSelectedChat(null);
-      fetchConversations();
-    } catch {
-      message.error(t("chat.delete_failed"));
-    }
-  }, [fetchConversations, selectedChat?.id, t]);
-
-  const saveTenantSettings = useCallback(() => {
-    writeTenantScope({ tenantId: tenantId.trim(), tenantNumber: tenantNumber.trim() });
-    message.success(t("chat.settings_saved"));
-    setSettingsOpen(false);
-    fetchConversations();
-  }, [fetchConversations, t, tenantId, tenantNumber]);
-
-  const saveRemark = useCallback(() => {
-    if (!selectedChat) return;
-    const nextValue: ChatRemark = {
-      displayName: remarkDraft.displayName.trim(),
-      company: remarkDraft.company.trim(),
-      tags: remarkDraft.tags.map((item) => item.trim()).filter(Boolean),
-      notes: remarkDraft.notes.trim(),
-      updatedAt: new Date().toISOString(),
-    };
-    const nextStore = { ...remarkStore, [selectedChat.id]: nextValue };
-    setRemarkStore(nextStore);
-    saveRemarkStore(nextStore);
-    setRemarkOpen(false);
-    message.success(t("chat.remark_saved"));
-  }, [remarkDraft, remarkStore, selectedChat, t]);
-
-  const handleSendMessage = useCallback(async () => {
-    if (!selectedChat) return;
-    const trimmed = draft.trim();
-    if (!trimmed) return;
-    const payload = translateEnabled && sendMode === "translated" && translatedDraft ? translatedDraft : trimmed;
-    setSending(true);
-    try {
-      await api.post("/user/chat/send", { peerPhone: selectedChat.phone, content: payload });
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          peer_phone: selectedChat.phone,
-          direction: "outbound",
-          content: payload,
-          status: "sent",
-          created_at: new Date().toISOString(),
-        },
-      ]);
-      setDraft("");
-      clearTranslationState();
-      window.setTimeout(scrollToBottom, 60);
-    } catch (error) {
-      console.error(error);
-      message.error(t("chat.send_message_failed"));
-    } finally {
-      setSending(false);
-    }
-  }, [clearTranslationState, draft, scrollToBottom, selectedChat, sendMode, translateEnabled, translatedDraft, t]);
-
-  const contextMenuItems = useCallback((chat: ChatItem) => [
-    { key: "pin", label: chat.pinned ? t("chat.unpin") : t("chat.pin"), onClick: () => togglePin(chat.id, !chat.pinned) },
-    { key: "ban", label: chat.banned ? t("chat.unblock") : t("chat.block"), onClick: () => toggleBan(chat.id, !chat.banned), danger: !chat.banned },
-    { key: "remark", label: t("chat.edit_remark"), onClick: () => { setSelectedChat(chat); setRemarkOpen(true); } },
-    { key: "read", label: t("chat.mark_read"), onClick: () => markRead(chat.id).then(fetchConversations) },
-    { type: "divider" as const },
-    { key: "delete", label: t("chat.delete_conversation"), danger: true, onClick: () => deleteChat(chat.id) },
-  ], [deleteChat, fetchConversations, markRead, t, toggleBan, togglePin]);
-
-  const handleSelectConversation = async (chat: ChatItem) => {
-    setSelectedChat(chat);
-    if ((chat.unreadCount ?? 0) > 0) {
-      await markRead(chat.id);
-      fetchConversations();
+  /**
+   * 通用请求助手
+   * 增加 Content-Type 检查，防止将 HTML 报错页面解析为 JSON
+   */
+  const safeFetch = async (url, options = {}) => {
+    const response = await fetch(url, options);
+    const contentType = response.headers.get("content-type");
+    
+    if (contentType && contentType.includes("application/json")) {
+      return await response.json();
+    } else {
+      const text = await response.text();
+      console.error(`期待 JSON 但收到 ${contentType}。内容摘要:`, text.substring(0, 100));
+      throw new Error(`服务器未返回 JSON (状态码: ${response.status})。请检查后端 API 路由。`);
     }
   };
 
+  // --- API 调用 ---
+
+  // 获取会话列表
+  const fetchConversations = async () => {
+    try {
+      const url = new URL("/user/chat/conversations", window.location.origin);
+      url.searchParams.append("limit", "100");
+      const result = await safeFetch(url.toString());
+      if (result.code === 0) {
+        setConversations(result.data || []);
+      } else {
+        message.error(result.message || "获取列表失败");
+      }
+    } catch (err) {
+      console.error("获取会话列表异常:", err);
+      // 已移除演示数据，异常时列表将保持为空
+      setConversations([]);
+    }
+  };
+
+  // 获取具体聊天记录
+  const fetchMessages = async (phone) => {
+    if (!phone) return;
+    setLoading(true);
+    try {
+      const url = new URL("/user/chat/messages", window.location.origin);
+      url.searchParams.append("peerPhone", phone);
+      url.searchParams.append("limit", "50");
+      const result = await safeFetch(url.toString());
+      if (result.code === 0) {
+        setMessages(result.data || []);
+        setTimeout(scrollToBottom, 100);
+      }
+    } catch (err) {
+      console.error("获取消息记录异常:", err);
+      setMessages([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 发送消息
+  const handleSend = async () => {
+    if (!draft.trim() || !selectedChat) return;
+    const payload = {
+      peerPhone: selectedChat.phone,
+      content: draft,
+    };
+    try {
+      const url = new URL("/user/chat/send", window.location.origin);
+      const result = await safeFetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (result.code === 0) {
+        setDraft("");
+        fetchMessages(selectedChat.phone);
+      } else {
+        message.error(result.message || "发送失败");
+      }
+    } catch (err) {
+      message.error("网络异常，发送失败");
+    }
+  };
+
+  useEffect(() => {
+    fetchConversations();
+  }, []);
+
+  useEffect(() => {
+    if (selectedChat) {
+      fetchMessages(selectedChat.phone);
+    }
+  }, [selectedChat]);
+
+  const scrollToBottom = useCallback(() => {
+    if (msgListRef.current) {
+      msgListRef.current.scrollTo({ top: msgListRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  }, []);
+
   return (
-    <div className="cm-page cm-page--chat" style={{ padding: 0 }}>
+    <div className="cm-chat-app-container">
       <style>{`
-        .cm-chat-shell {
-          height: calc(100vh - 64px); /* 减去顶部 Header 高度 */
+        .cm-chat-app-container {
+          background-color: #f7f8fa;
+          height: 100vh;
           display: flex;
           overflow: hidden;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
+
+        /* 侧边栏样式 */
         .cm-chat-sidebar {
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-        }
-        .cm-chat-pane {
-          flex: 1;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-        }
-        .cm-thread-stream {
-          flex: 1;
-          overflow-y: auto !important;
-          padding: 16px;
-        }
-        /* 极简绿色滚动条样式 */
-        .cm-thread-stream::-webkit-scrollbar, 
-        .ant-list::-webkit-scrollbar {
-          width: 5px;
-        }
-        .cm-thread-stream::-webkit-scrollbar-track,
-        .ant-list::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .cm-thread-stream::-webkit-scrollbar-thumb,
-        .ant-list::-webkit-scrollbar-thumb {
-          background-color: rgba(64, 169, 137, 0.2);
-          border-radius: 10px;
-        }
-        .cm-thread-stream::-webkit-scrollbar-thumb:hover,
-        .ant-list::-webkit-scrollbar-thumb:hover {
-          background-color: rgba(64, 169, 137, 0.4);
-        }
-        .cm-compose-wrap {
-          flex-shrink: 0;
+          width: 320px;
           background: #fff;
-          border-top: 1px solid rgba(0,0,0,0.05);
+          border-right: 1px solid #efeff5;
+          display: flex;
+          flex-direction: column;
+          margin: 12px 0 12px 12px;
+          border-radius: 12px;
         }
+
+        .cm-sidebar-search-wrap { padding: 16px; border-bottom: 1px solid #f0f0f0; }
+        .cm-status-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .cm-status-tag {
+          font-size: 11px; padding: 2px 8px; border-radius: 12px;
+          cursor: pointer; border: 1px solid #e5e7eb; background: #fff; color: #6b7280;
+        }
+        .cm-status-tag--active { background: #f3f4f6; color: #111827; border-color: #d1d5db; }
+
+        /* 主聊天区 */
+        .cm-chat-pane { flex: 1; display: flex; flex-direction: column; position: relative; }
+        
+        .cm-chat-header { 
+          padding: 8px 24px; 
+          display: flex; 
+          justify-content: flex-end; 
+          align-items: center; 
+          border-bottom: 1px solid #f0f0f0; 
+          background: #fff; 
+          min-height: 48px;
+        }
+
+        .cm-thread-stream { flex: 1; padding: 20px 4% 120px 4%; overflow-y: auto; }
+        .cm-thread-stream::-webkit-scrollbar { width: 4px; }
+        .cm-thread-stream::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+
+        .msg-row { display: flex; margin-bottom: 16px; width: 100%; }
+        .msg-row-inbound { justify-content: flex-start; }
+        .msg-row-outbound { justify-content: flex-end; }
+        
+        .msg-bubble {
+          max-width: 80%; padding: 10px 16px; border-radius: 12px; font-size: 14px;
+          line-height: 1.5; position: relative;
+        }
+        .msg-bubble-inbound { background: #fff; border: 1px solid #e5e7eb; color: #111827; }
+        .msg-bubble-outbound { background: #374151; color: #fff; }
+
+        /* 底部输入框 */
+        .cm-compose-wrap {
+          position: absolute; bottom: 0; left: 0; right: 0;
+          padding: 0 4% 20px 4%;
+          background: linear-gradient(to top, #f7f8fa 70%, rgba(247, 248, 250, 0));
+        }
+        .cm-compose-shell {
+          background-color: #ffffff; border: 1px solid #e5e7eb;
+          border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); padding: 12px 16px;
+        }
+        .cm-compose-input { border: none !important; box-shadow: none !important; padding: 0 !important; margin-bottom: 8px !important; font-size: 14px !important; background: transparent !important; resize: none !important; }
+        .cm-compose-actions { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+
+        .action-icon-btn { color: #9ca3af !important; font-size: 16px !important; padding: 4px !important; }
+        .action-icon-btn:hover { color: #374151 !important; }
+        .send-btn { 
+          background: #374151 !important; 
+          border: none !important; 
+          width: 28px !important; 
+          height: 28px !important; 
+          display: flex; 
+          align-items: center; 
+          justify-content: center; 
+          border-radius: 6px !important; 
+          transition: all 0.2s ease;
+          cursor: pointer;
+        }
+        .send-btn:disabled {
+          background: #e5e7eb !important;
+          color: #9ca3af !important;
+          cursor: not-allowed !important;
+          opacity: 0.7;
+        }
+
+        .cm-conv-item { padding: 14px 16px; display: flex; align-items: flex-start; gap: 12px; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid #f9fafb; }
+        .cm-conv-item:hover { background: #f9fafb; }
+        .cm-conv-item--active { background: #f3f4f6; border-left: 3px solid #374151; }
+        .cm-phone-display { font-size: 11px; color: #9ca3af; margin-top: 2px; font-family: "SF Mono", Menlo, monospace; }
       `}</style>
-      
-      <div className="cm-chat-shell">
-        <div className="cm-chat-sidebar cm-chat-sidebar__panel">
-          <div className="cm-chat-sidebar__header">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-              <div>
-                <Text className="cm-kpi-eyebrow">{t("chat.conversations")}</Text>
-                <Title level={4} style={{ margin: "4px 0 0", color: "var(--cm-text-primary)" }}>
-                  {t("chat.queue_filters")}
-                </Title>
-              </div>
-              <Space size={6}>
-                <Button size="small" icon={<ReloadOutlined />} onClick={fetchConversations} />
-                <Button size="small" icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)} />
-              </Space>
-            </div>
-          </div>
-          <Input
-            placeholder={t("chat.search_placeholder")}
-            prefix={<SearchOutlined />}
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            allowClear
-            style={{ marginBottom: 12, paddingLeft: 12, paddingRight: 12 }}
+
+      {/* 左侧会话列表 */}
+      <div className="cm-chat-sidebar">
+        <div className="cm-sidebar-search-wrap">
+          <Input 
+            prefix={<SearchOutlined style={{color: '#9ca3af'}} />} 
+            placeholder="搜索手机号 / 备注" 
+            variant="filled"
+            style={{ borderRadius: '16px', background: '#f3f4f6', border: 'none' }}
           />
-          <div className="cm-chat-filter-row">
-            {[
-              { value: "all", label: t("chat.filter_all") },
-              { value: "normal", label: t("chat.filter_normal") },
-              { value: "paused", label: t("chat.filter_paused") },
-              { value: "busy", label: t("chat.filter_busy") },
-              { value: "banned", label: t("chat.filter_banned") },
-            ].map((option) => (
-              <Button
-                key={option.value}
-                size="small"
-                type="default"
-                className={statusTab === option.value ? "cm-chat-filter-btn cm-chat-filter-btn--active" : "cm-chat-filter-btn"}
-                onClick={() => setStatusTab(option.value as typeof statusTab)}
+          <div className="cm-status-tags">
+            {statusTags.map((tag) => (
+              <span 
+                key={tag} 
+                className={`cm-status-tag ${activeTab === tag ? 'cm-status-tag--active' : ''}`}
+                onClick={() => setActiveTab(tag)}
               >
-                {option.label}
-              </Button>
+                {tag}
+              </span>
             ))}
           </div>
-
-          {loadingConvs ? (
-            <Spin style={{ marginTop: 30 }} />
-          ) : filteredConversations.length === 0 ? (
-            <div style={{ padding: "12px 8px", color: "var(--cm-text-secondary)" }}>
-              {t("chat.empty_copy")}
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {conversations.length === 0 ? (
+             <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>
+                暂无会话内容
+             </div>
+          ) : conversations.map(item => (
+            <div 
+              key={item.phone}
+              className={`cm-conv-item ${selectedChat?.phone === item.phone ? 'cm-conv-item--active' : ''}`}
+              onClick={() => setSelectedChat(item)}
+            >
+              <Avatar icon={<UserOutlined />} style={{ background: '#e5e7eb', color: '#9ca3af', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <Text strong style={{ fontSize: '14px' }}>{item.name || "未命名客户"}</Text>
+                    <span className="cm-phone-display">
+                      {formatUSPhone(item.phone)}
+                    </span>
+                  </div>
+                  <Text type="secondary" style={{ fontSize: '11px' }}>
+                    {item.last_activity ? new Date(item.last_activity).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ""}
+                  </Text>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                  <Text type="secondary" ellipsis style={{ fontSize: '12px', flex: 1 }}>
+                    {item.last_message || "暂无最新消息"}
+                  </Text>
+                  {item.unread_count > 0 && (
+                    <div style={{ background: '#ff4d4f', color: '#fff', borderRadius: '10px', padding: '0 6px', fontSize: '10px', height: '16px', lineHeight: '16px', marginLeft: '8px' }}>
+                      {item.unread_count}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          ) : (
-            <List
-              dataSource={filteredConversations}
-              style={{ overflow: "auto", flex: 1 }}
-              renderItem={(chat) => {
-                const remark = remarkStore[chat.id] ?? emptyRemark;
-                const displayName = remark.displayName || chat.name || formatPhoneNumber(chat.phone);
-                const notePreview = remark.notes || chat.lastMessage || t("chat.no_messages_preview");
-                const statusKind = getAccountStatusKind(chat.status);
-                const statusTone: Record<string, string> = { normal: "green", paused: "gold", busy: "blue", banned: "default" };
-                const statusLabel = t(`status.account.${statusKind}`, { defaultValue: statusKind });
-                const active = selectedChat?.id === chat.id;
-                return (
-                  <Dropdown key={chat.id} trigger={["contextMenu"]} menu={{ items: contextMenuItems(chat) }}>
-                    <List.Item
-                      onClick={() => void handleSelectConversation(chat)}
-                      className={`cm-conversation-item${active ? " cm-conversation-item--active" : ""}`}
-                    >
-                      <List.Item.Meta
-                        avatar={
-                          <Badge dot={Boolean(chat.unreadCount)} offset={[-4, 4]}>
-                            <Avatar style={{ backgroundColor: token.colorPrimary }}>
-                              {displayName?.[0]?.toUpperCase() ?? "?"}
-                            </Avatar>
-                          </Badge>
-                        }
-                        title={
-                          <Space wrap>
-                            <Text strong style={{ color: "var(--cm-text-primary)" }}>{displayName}</Text>
-                            {remark.company ? <Tag color="blue" style={{ borderRadius: 999 }}>{remark.company}</Tag> : null}
-                            <Tag color={statusTone[statusKind]} style={{ borderRadius: 999, marginLeft: "auto" }}>
-                              {statusLabel}
-                            </Tag>
-                          </Space>
-                        }
-                        description={
-                          <div className="cm-conversation-item__meta">
-                            <Text type="secondary" ellipsis className="cm-conversation-item__preview">
-                              {notePreview}
-                            </Text>
-                            <Text type="secondary">{chat.time ?? ""}</Text>
-                          </div>
-                        }
-                      />
-                    </List.Item>
-                  </Dropdown>
-                );
-              }}
-            />
-          )}
+          ))}
+        </div>
+      </div>
+
+      {/* 右侧主面板 */}
+      <div className="cm-chat-pane">
+        <div className="cm-chat-header">
+           <Space size={8}>
+              <Button type="text" icon={<ReloadOutlined />} className="action-icon-btn" onClick={fetchConversations} />
+              <Button type="text" icon={<SettingOutlined />} className="action-icon-btn" onClick={() => setIsDrawerOpen(true)} />
+           </Space>
         </div>
 
-        <div className="cm-chat-pane cm-chat-pane__panel">
-          <div className="cm-thread-head" style={{ flexShrink: 0 }}>
-            <div>
-              <Text className="cm-kpi-eyebrow">{t("chat.live_thread")}</Text>
-              <Title level={4} style={{ margin: "6px 0 4px", color: "var(--cm-text-primary)" }}>
-                {selectedChat ? selectedDisplayName : t("chat.workspace_title")}
-              </Title>
-              <Text style={{ color: "var(--cm-text-secondary)" }}>
-                {selectedChat ? selectedRemark.notes || formatPhoneNumber(selectedChat.phone) : t("chat.workspace_copy")}
-              </Text>
-              {selectedChat ? (
-                <div className="cm-thread-head__meta">
-                  <Tag
-                    color={
-                      selectedConversationHealth === "normal"
-                        ? "green"
-                        : selectedConversationHealth === "paused"
-                          ? "gold"
-                          : selectedConversationHealth === "busy"
-                            ? "blue"
-                            : "default"
-                    }
-                    style={{ borderRadius: 999 }}
-                  >
-                    {selectedConversationHealthLabel}
-                  </Tag>
-                  <Text type="secondary">{formatPhoneNumber(selectedChat.phone)}</Text>
-                  {selectedRemark.company ? <Tag color="blue" style={{ borderRadius: 999 }}>{selectedRemark.company}</Tag> : null}
+        <div className="cm-thread-stream" ref={msgListRef}>
+          {messages.length === 0 && !loading && selectedChat && (
+             <div style={{ textAlign: 'center', marginTop: '50px', color: '#9ca3af' }}>暂无消息记录</div>
+          )}
+          {messages.map((msg) => (
+            <div key={msg.id || Math.random()} className={`msg-row msg-row-${msg.direction}`}>
+              <div className={`msg-bubble msg-bubble-${msg.direction}`}>
+                {msg.media_url && (
+                  <img src={msg.media_url} style={{ maxWidth: '100%', borderRadius: '8px', marginBottom: '8px', display: 'block' }} alt="媒体内容" />
+                )}
+                <div>{msg.content}</div>
+                <div style={{ fontSize: '10px', marginTop: '4px', opacity: 0.6, textAlign: 'right' }}>
+                  {new Date(msg.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
                 </div>
-              ) : null}
+              </div>
             </div>
-            <Space wrap className="cm-thread-head__actions">
-              <Button icon={<EditOutlined />} onClick={() => setRemarkOpen(true)} disabled={!selectedChat}>
-                {t("chat.remark")}
-              </Button>
-              <Button icon={<ReloadOutlined />} onClick={() => selectedChat && fetchMessages(selectedChat.id)} disabled={!selectedChat}>
-                {t("common.refresh")}
-              </Button>
-            </Space>
-          </div>
+          ))}
+        </div>
 
-          <div ref={msgListRef} className="cm-thread-stream">
-            {loadingMsgs ? (
-              <Spin />
-            ) : !selectedChat ? (
-              <div style={{ padding: "12px 8px", color: "var(--cm-text-secondary)" }}>
-                {t("chat.workspace_standby_copy")}
-              </div>
-            ) : messages.length === 0 ? (
-              <div style={{ padding: "12px 8px", color: "var(--cm-text-secondary)" }}>
-                {t("chat.thread_empty_copy")}
-              </div>
-            ) : (
-              messages.map((msg) => {
-                const isMine = msg.direction === "outbound";
-                return (
-                  <div key={msg.id} className={`cm-message-row${isMine ? " cm-message-row--mine" : ""}`}>
-                    <div className={`cm-message-bubble${isMine ? " cm-message-bubble--mine" : ""}`}>
-                      <div>{msg.content}</div>
-                      <div className={`cm-message-bubble__meta${isMine ? " cm-message-bubble__meta--mine" : ""}`}>
-                        {formatTime(msg.created_at)} · {formatMessageStatus(msg.status, msg.direction, t)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <div className="cm-compose-wrap">
-            <div className="cm-compose-shell" style={{ padding: 16 }}>
-              <div className="cm-compose-toolbar">
-                <Button
-                  size="small"
-                  type={translateEnabled ? "primary" : "default"}
-                  className={translateEnabled ? "cm-primary-button" : undefined}
-                  icon={<TranslationOutlined />}
-                  onClick={() => {
-                    setTranslateEnabled((prev) => !prev);
-                    if (translateEnabled) clearTranslationState();
-                  }}
-                >
-                  {translateEnabled ? t("chat.translation_on") : t("chat.translation_off")}
-                </Button>
-                <Select
-                  size="small"
-                  value={translateTarget}
-                  onChange={(value) => setTranslateTarget(value)}
-                  style={{ width: 140 }}
-                  disabled={!translateEnabled}
-                  options={[
-                    { value: "en", label: t("chat.translate_to_en") },
-                    { value: "zh", label: t("chat.translate_to_zh") },
-                  ]}
+        <div className="cm-compose-wrap">
+          <div className="cm-compose-shell">
+            <TextArea
+              className="cm-compose-input"
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              placeholder={selectedChat ? "在此输入消息内容..." : "请先从左侧选择一个联系人"}
+              autoSize={{ minRows: 1, maxRows: 8 }}
+              onPressEnter={(e) => {
+                if (!e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+            />
+            
+            <div className="cm-compose-actions">
+              <Space size={2}>
+                <Button type="text" icon={<PaperClipOutlined />} className="action-icon-btn" />
+                <Button 
+                  type="text" 
+                  icon={<GlobalOutlined />} 
+                  className={`action-icon-btn ${isTranslationOn ? 'action-icon-btn--active' : ''}`}
+                  onClick={() => setIsTranslationOn(!isTranslationOn)}
                 />
-                {translateEnabled ? <div className="cm-compose-spacer" /> : null}
-                {translateEnabled ? (
-                  <Space size={8} wrap>
-                    <Button
-                      size="small"
-                      type={sendMode === "original" ? "primary" : "default"}
-                      onClick={() => setSendMode("original")}
-                    >
-                      {t("chat.send_original")}
-                    </Button>
-                    <Button
-                      size="small"
-                      type={sendMode === "translated" ? "primary" : "default"}
-                      onClick={() => setSendMode("translated")}
-                      disabled={!translatedDraft}
-                    >
-                      {t("chat.send_translation")}
-                    </Button>
-                  </Space>
-                ) : null}
-              </div>
+              </Space>
 
-              <TextArea
-                placeholder={t("chat.message_placeholder")}
-                autoSize={{ minRows: 2, maxRows: 5 }}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleSendMessage();
-                  }
-                }}
-                disabled={sending || !selectedChat}
-              />
-
-              {translateEnabled ? (
-                <div className="cm-compose-preview">
-                  <div className="cm-compose-preview__head">
-                    <Text type="secondary">
-                      {translating
-                        ? t("chat.translating")
-                        : translationError
-                          ? translationError
-                          : translatedDraft
-                            ? t("chat.detected_language", { lang: detectedLanguage || "auto" })
-                            : t("chat.translation_hint")}
-                    </Text>
-                    {translatedDraft ? (
-                      <Tag color="blue" style={{ borderRadius: 999 }}>
-                        {sendMode === "translated" ? t("chat.current_send_translation") : t("chat.current_send_original")}
-                      </Tag>
-                    ) : null}
-                  </div>
-                  {translatedDraft ? <div className="cm-compose-preview__body">{translatedDraft}</div> : null}
-                </div>
-              ) : null}
-
-              <div className="cm-compose-actions">
-                <Button type="primary" className="cm-primary-button" icon={<SendOutlined />} loading={sending} onClick={() => void handleSendMessage()} disabled={!draft.trim() || sending || !selectedChat}>
-                  {translateEnabled && sendMode === "translated" && translatedDraft ? t("chat.send_translation_button") : t("chat.send_message_button")}
-                </Button>
-              </div>
+              <Space size={2} align="center">
+                <span className={`action-text-btn ${transMode === '译' ? 'action-text-btn--active' : ''}`} onClick={() => setTransMode('译')}>译</span>
+                <div className="cm-action-divider" />
+                <span className={`action-text-btn ${transMode === '原' ? 'action-text-btn--active' : ''}`} onClick={() => setTransMode('原')}>原</span>
+                <Button 
+                  type="primary" 
+                  icon={<SendOutlined style={{ fontSize: '12px' }} />} 
+                  className="send-btn"
+                  style={{ marginLeft: '8px' }}
+                  disabled={!draft.trim() || !selectedChat}
+                  onClick={handleSend}
+                />
+              </Space>
             </div>
           </div>
         </div>
       </div>
 
-      <Drawer title={t("chat.settings_title")} placement="right" open={settingsOpen} onClose={() => setSettingsOpen(false)} width={340}>
-        <Space direction="vertical" style={{ width: "100%" }}>
-          <Text strong>{t("chat.tenant_info")}</Text>
-          <Input addonBefore={t("chat.tenant_id")} value={tenantId} onChange={(event) => setTenantId(event.target.value)} placeholder={t("chat.tenant_id_placeholder")} />
-          <Input addonBefore={t("chat.tenant_number")} value={tenantNumber} onChange={(event) => setTenantNumber(event.target.value)} placeholder={t("chat.tenant_number_placeholder")} />
-          <Button type="primary" className="cm-primary-button" onClick={saveTenantSettings}>{t("common.save")}</Button>
-        </Space>
-      </Drawer>
-
-      <Drawer title={selectedChat ? t("chat.remark_for", { name: selectedDisplayName }) : t("chat.contact_remark")} placement="right" open={remarkOpen} onClose={() => setRemarkOpen(false)} width={380}>
-        {selectedChat ? (
-          <Form layout="vertical">
-            <Form.Item label={t("chat.remark_name")}><Input value={remarkDraft.displayName} onChange={(event) => setRemarkDraft((prev) => ({ ...prev, displayName: event.target.value }))} placeholder={t("chat.remark_name_placeholder")} /></Form.Item>
-            <Form.Item label={t("chat.remark_company")}><Input value={remarkDraft.company} onChange={(event) => setRemarkDraft((prev) => ({ ...prev, company: event.target.value }))} placeholder={t("chat.remark_company_placeholder")} /></Form.Item>
-            <Form.Item label={t("chat.remark_tags")}><Select mode="tags" value={remarkDraft.tags} onChange={(value) => setRemarkDraft((prev) => ({ ...prev, tags: value }))} tokenSeparators={[","]} placeholder={t("chat.remark_tags_placeholder")} /></Form.Item>
-            <Form.Item label={t("chat.remark_notes")}><TextArea autoSize={{ minRows: 5, maxRows: 10 }} value={remarkDraft.notes} onChange={(event) => setRemarkDraft((prev) => ({ ...prev, notes: event.target.value }))} placeholder={t("chat.remark_notes_placeholder")} /></Form.Item>
-            <Text type="secondary">{selectedRemark.updatedAt ? t("chat.remark_updated_at", { time: new Date(selectedRemark.updatedAt).toLocaleString() }) : t("chat.remark_empty")}</Text>
-            <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-              <Button onClick={() => setRemarkOpen(false)}>{t("common.cancel")}</Button>
-              <Button type="primary" className="cm-primary-button" onClick={saveRemark}>{t("chat.save_remark")}</Button>
-            </div>
-          </Form>
-        ) : (
-          <Text type="secondary">{t("chat.remark_hint")}</Text>
-        )}
+      <Drawer
+        title="联系人详情"
+        placement="right"
+        onClose={() => setIsDrawerOpen(false)}
+        open={isDrawerOpen}
+        width={350}
+      >
+        <div style={{ padding: '0 10px' }}>
+          {selectedChat ? (
+            <Space direction="vertical" style={{ width: '100%' }} size={16}>
+               <div>
+                 <Text type="secondary">姓名</Text>
+                 <div><Text strong>{selectedChat.name || "未填写"}</Text></div>
+               </div>
+               <div>
+                 <Text type="secondary">电话 (US)</Text>
+                 <div><Text strong>{formatUSPhone(selectedChat.phone)}</Text></div>
+               </div>
+               <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
+                 <Text type="secondary">备注信息</Text>
+                 <div style={{ marginTop: '8px' }}>暂无详细备注</div>
+               </div>
+            </Space>
+          ) : <div style={{ textAlign: 'center', color: '#9ca3af' }}>请选择一个会话以查看详细信息</div>}
+        </div>
       </Drawer>
     </div>
   );
